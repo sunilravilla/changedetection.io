@@ -19,6 +19,8 @@ from . model import App, Watch
 # Is there an existing library to ensure some data store (JSON etc) is in sync with CRUD methods?
 # Open a github issue if you know something :)
 # https://stackoverflow.com/questions/6190468/how-to-trigger-function-on-value-change
+
+
 class ChangeDetectionStore:
     lock = Lock()
     # For general updates/writes that can wait a few seconds
@@ -34,14 +36,16 @@ class ChangeDetectionStore:
         # logging.basicConfig(filename='/dev/stdout', level=logging.INFO)
         self.__data = App.model()
         self.datastore_path = datastore_path
-        self.json_store_path = "{}/url-watches.json".format(self.datastore_path)
+        self.json_store_path = "{}/url-watches.json".format(
+            self.datastore_path)
         self.needs_write = False
         self.proxy_list = None
         self.start_time = time.time()
         self.stop_thread = False
         # Base definition for all watchers
         # deepcopy part of #569 - not sure why its needed exactly
-        self.generic_definition = deepcopy(Watch.model(datastore_path = datastore_path, default={}))
+        self.generic_definition = deepcopy(Watch.model(
+            datastore_path=datastore_path, default={}))
 
         if path.isfile('changedetectionio/source.txt'):
             with open('changedetectionio/source.txt') as f:
@@ -64,19 +68,24 @@ class ChangeDetectionStore:
 
                 if 'settings' in from_disk:
                     if 'headers' in from_disk['settings']:
-                        self.__data['settings']['headers'].update(from_disk['settings']['headers'])
+                        self.__data['settings']['headers'].update(
+                            from_disk['settings']['headers'])
 
                     if 'requests' in from_disk['settings']:
-                        self.__data['settings']['requests'].update(from_disk['settings']['requests'])
+                        self.__data['settings']['requests'].update(
+                            from_disk['settings']['requests'])
 
                     if 'application' in from_disk['settings']:
-                        self.__data['settings']['application'].update(from_disk['settings']['application'])
+                        self.__data['settings']['application'].update(
+                            from_disk['settings']['application'])
 
                 # Convert each existing watch back to the Watch.model object
                 for uuid, watch in self.__data['watching'].items():
-                    watch['uuid']=uuid
-                    self.__data['watching'][uuid] = Watch.model(datastore_path=self.datastore_path, default=watch)
-                    print("Watching:", uuid, self.__data['watching'][uuid]['url'])
+                    watch['uuid'] = uuid
+                    self.__data['watching'][uuid] = Watch.model(
+                        datastore_path=self.datastore_path, default=watch)
+                    print("Watching:", uuid,
+                          self.__data['watching'][uuid]['url'])
 
         # First time ran, doesnt exist.
         except (FileNotFoundError, json.decoder.JSONDecodeError):
@@ -93,7 +102,8 @@ class ChangeDetectionStore:
         self.__data['version_tag'] = version_tag
 
         # Helper to remove password protection
-        password_reset_lockfile = "{}/removepassword.lock".format(self.datastore_path)
+        password_reset_lockfile = "{}/removepassword.lock".format(
+            self.datastore_path)
         if path.isfile(password_reset_lockfile):
             self.__data['settings']['application']['password'] = False
             unlink(password_reset_lockfile)
@@ -130,7 +140,8 @@ class ChangeDetectionStore:
         save_data_thread = threading.Thread(target=self.save_datastore).start()
 
     def set_last_viewed(self, uuid, timestamp):
-        logging.debug("Setting watch UUID: {} last viewed to {}".format(uuid, int(timestamp)))
+        logging.debug("Setting watch UUID: {} last viewed to {}".format(
+            uuid, int(timestamp)))
         self.data['watching'][uuid].update({'last_viewed': int(timestamp)})
         self.needs_write = True
 
@@ -150,7 +161,8 @@ class ChangeDetectionStore:
             for dict_key, d in self.generic_definition.items():
                 if isinstance(d, dict):
                     if update_obj is not None and dict_key in update_obj:
-                        self.__data['watching'][uuid][dict_key].update(update_obj[dict_key])
+                        self.__data['watching'][uuid][dict_key].update(
+                            update_obj[dict_key])
                         del (update_obj[dict_key])
 
             self.__data['watching'][uuid].update(update_obj)
@@ -161,7 +173,8 @@ class ChangeDetectionStore:
     def threshold_seconds(self):
         seconds = 0
         for m, n in Watch.mtable.items():
-            x = self.__data['settings']['requests']['time_between_check'].get(m)
+            x = self.__data['settings']['requests']['time_between_check'].get(
+                m)
             if x:
                 seconds += x * n
         return seconds
@@ -184,9 +197,10 @@ class ChangeDetectionStore:
                 self.__data['watching'][uuid]['fetch_backend'] = self.__data['settings']['application']['fetch_backend']
 
         # Re #152, Return env base_url if not overriden, @todo also prefer the proxy pass url
-        env_base_url = os.getenv('BASE_URL','')
+        env_base_url = os.getenv('BASE_URL', '')
         if not self.__data['settings']['application']['base_url']:
-          self.__data['settings']['application']['base_url'] = env_base_url.strip('" ')
+            self.__data['settings']['application']['base_url'] = env_base_url.strip(
+                '" ')
 
         return self.__data
 
@@ -251,14 +265,14 @@ class ChangeDetectionStore:
         import pathlib
 
         self.__data['watching'][uuid].update({
-                'last_checked': 0,
-                'has_ldjson_price_data': None,
-                'last_error': False,
-                'last_notification_error': False,
-                'last_viewed': 0,
-                'previous_md5': False,
-                'track_ldjson_price_data': None,
-            })
+            'last_checked': 0,
+            'has_ldjson_price_data': None,
+            'last_error': False,
+            'last_notification_error': False,
+            'last_viewed': 0,
+            'previous_md5': False,
+            'track_ldjson_price_data': None,
+        })
 
         # JSON Data, Screenshots, Textfiles (history index and snapshots), HTML in the future etc
         for item in pathlib.Path(os.path.join(self.datastore_path, uuid)).rglob("*.*"):
@@ -315,10 +329,12 @@ class ChangeDetectionStore:
                             apply_extras[k] = res[k]
                         else:
                             # We renamed the field and made it a list
-                            apply_extras['include_filters'] = [res['css_filter']]
+                            apply_extras['include_filters'] = [
+                                res['css_filter']]
 
             except Exception as e:
-                logging.error("Error fetching metadata for shared watch link", url, str(e))
+                logging.error(
+                    "Error fetching metadata for shared watch link", url, str(e))
                 flash("Error fetching metadata for {}".format(url), 'error')
                 return False
 
@@ -351,7 +367,7 @@ class ChangeDetectionStore:
         output_path = "{}/{}".format(self.datastore_path, watch_uuid)
         screenshot_filename = "{}/last-screenshot.png".format(output_path)
         elements_index_filename = "{}/elements.json".format(output_path)
-        if path.isfile(screenshot_filename) and  path.isfile(elements_index_filename) :
+        if path.isfile(screenshot_filename) and path.isfile(elements_index_filename):
             return True
 
         return False
@@ -362,9 +378,11 @@ class ChangeDetectionStore:
             return
 
         if as_error:
-            target_path = os.path.join(self.datastore_path, watch_uuid, "last-error-screenshot.png")
+            target_path = os.path.join(
+                self.datastore_path, watch_uuid, "last-error-screenshot.png")
         else:
-            target_path = os.path.join(self.datastore_path, watch_uuid, "last-screenshot.png")
+            target_path = os.path.join(
+                self.datastore_path, watch_uuid, "last-screenshot.png")
 
         self.data['watching'][watch_uuid].ensure_data_dir_exists()
 
@@ -375,29 +393,31 @@ class ChangeDetectionStore:
         # Make a JPEG that's used in notifications (due to being a smaller size) available
         from PIL import Image
         im1 = Image.open(target_path)
-        im1.convert('RGB').save(target_path.replace('.png','.jpg'), quality=int(os.getenv("NOTIFICATION_SCREENSHOT_JPG_QUALITY", 75)))
-
+        im1.convert('RGB').save(target_path.replace('.png', '.jpg'), quality=int(
+            os.getenv("NOTIFICATION_SCREENSHOT_JPG_QUALITY", 75)))
 
     def save_error_text(self, watch_uuid, contents):
         if not self.data['watching'].get(watch_uuid):
             return
-        target_path = os.path.join(self.datastore_path, watch_uuid, "last-error.txt")
+        target_path = os.path.join(
+            self.datastore_path, watch_uuid, "last-error.txt")
 
-        with open(target_path, 'w') as f:
+        with open(target_path, 'w', encoding='utf-8', errors='ignore') as f:
             f.write(contents)
 
     def save_xpath_data(self, watch_uuid, data, as_error=False):
         if not self.data['watching'].get(watch_uuid):
             return
         if as_error:
-            target_path = os.path.join(self.datastore_path, watch_uuid, "elements-error.json")
+            target_path = os.path.join(
+                self.datastore_path, watch_uuid, "elements-error.json")
         else:
-            target_path = os.path.join(self.datastore_path, watch_uuid, "elements.json")
+            target_path = os.path.join(
+                self.datastore_path, watch_uuid, "elements.json")
 
         with open(target_path, 'w') as f:
             f.write(json.dumps(data))
             f.close()
-
 
     def sync_to_json(self):
         logging.info("Saving JSON..")
@@ -407,7 +427,8 @@ class ChangeDetectionStore:
         except RuntimeError as e:
             # Try again in 15 seconds
             time.sleep(15)
-            logging.error ("! Data changed when writing to JSON, trying again.. %s", str(e))
+            logging.error(
+                "! Data changed when writing to JSON, trying again.. %s", str(e))
             self.sync_to_json()
             return
         else:
@@ -420,7 +441,8 @@ class ChangeDetectionStore:
                     json.dump(data, json_file, indent=4)
                 os.replace(self.json_store_path+".tmp", self.json_store_path)
             except Exception as e:
-                logging.error("Error writing JSON!! (Main JSON file save was skipped) : %s", str(e))
+                logging.error(
+                    "Error writing JSON!! (Main JSON file save was skipped) : %s", str(e))
 
             self.needs_write = False
             self.needs_write_urgent = False
@@ -447,9 +469,9 @@ class ChangeDetectionStore:
     # Go through the datastore path and remove any snapshots that are not mentioned in the index
     # This usually is not used, but can be handy.
     def remove_unused_snapshots(self):
-        print ("Removing snapshots from datastore that are not in the index..")
+        print("Removing snapshots from datastore that are not in the index..")
 
-        index=[]
+        index = []
         for uuid in self.data['watching']:
             for id in self.data['watching'][uuid].history:
                 index.append(self.data['watching'][uuid].history[str(id)])
@@ -460,14 +482,13 @@ class ChangeDetectionStore:
         for uuid in self.data['watching']:
             for item in pathlib.Path(self.datastore_path).rglob(uuid+"/*.txt"):
                 if not str(item) in index:
-                    print ("Removing",item)
+                    print("Removing", item)
                     unlink(item)
 
     def import_proxy_list(self, filename):
         with open(filename) as f:
             self.proxy_list = json.load(f)
-            print ("Registered proxy list", list(self.proxy_list.keys()))
-
+            print("Registered proxy list", list(self.proxy_list.keys()))
 
     def get_preferred_proxy_for_watch(self, uuid):
         """
@@ -517,13 +538,15 @@ class ChangeDetectionStore:
 
         for update_n in updates_available:
             if update_n > self.__data['settings']['application']['schema_version']:
-                print ("Applying update_{}".format((update_n)))
+                print("Applying update_{}".format((update_n)))
                 # Wont exist on fresh installs
                 if os.path.exists(self.json_store_path):
-                    shutil.copyfile(self.json_store_path, self.datastore_path+"/url-watches-before-{}.json".format(update_n))
+                    shutil.copyfile(self.json_store_path, self.datastore_path +
+                                    "/url-watches-before-{}.json".format(update_n))
 
                 try:
-                    update_method = getattr(self, "update_{}".format(update_n))()
+                    update_method = getattr(
+                        self, "update_{}".format(update_n))()
                 except Exception as e:
                     print("Error while trying update_{}".format((update_n)))
                     print(e)
@@ -555,8 +578,9 @@ class ChangeDetectionStore:
 
             if watch.get('history', False):
                 for d, p in watch['history'].items():
-                    d = int(d)  # Used to be keyed as str, we'll fix this now too
-                    history.append("{},{}\n".format(d,p))
+                    # Used to be keyed as str, we'll fix this now too
+                    d = int(d)
+                    history.append("{},{}\n".format(d, p))
 
                 if len(history):
                     target_path = os.path.join(self.datastore_path, uuid)
@@ -564,7 +588,8 @@ class ChangeDetectionStore:
                         with open(os.path.join(target_path, "history.txt"), "w") as f:
                             f.writelines(history)
                     else:
-                        logging.warning("Datastore history directory {} does not exist, skipping history import.".format(target_path))
+                        logging.warning(
+                            "Datastore history directory {} does not exist, skipping history import.".format(target_path))
 
                 # No longer needed, dynamically pulled from the disk when needed.
                 # But we should set it back to a empty dict so we don't break if this schema runs on an earlier version.
@@ -589,8 +614,10 @@ class ChangeDetectionStore:
     def update_5(self):
         # If the watch notification body, title look the same as the global one, unset it, so the watch defaults back to using the main settings
         # In other words - the watch notification_title and notification_body are not needed if they are the same as the default one
-        current_system_body = self.data['settings']['application']['notification_body'].translate(str.maketrans('', '', "\r\n "))
-        current_system_title = self.data['settings']['application']['notification_body'].translate(str.maketrans('', '', "\r\n "))
+        current_system_body = self.data['settings']['application']['notification_body'].translate(
+            str.maketrans('', '', "\r\n "))
+        current_system_title = self.data['settings']['application']['notification_body'].translate(
+            str.maketrans('', '', "\r\n "))
         for uuid, watch in self.data['watching'].items():
             try:
                 watch_body = watch.get('notification_body', '')
@@ -606,9 +633,9 @@ class ChangeDetectionStore:
                 continue
         return
 
-
     # We incorrectly used common header overrides that should only apply to Requests
     # These are now handled in content_fetcher::html_requests and shouldnt be passed to Playwright/Selenium
+
     def update_7(self):
         # These were hard-coded in early versions
         for v in ['User-Agent', 'Accept', 'Accept-Encoding', 'Accept-Language']:
@@ -645,7 +672,8 @@ class ChangeDetectionStore:
                 n_urls = watch.get('notification_urls')
                 if n_urls:
                     for i, url in enumerate(n_urls):
-                        watch['notification_urls'][i] = re.sub(r, r'{{\1}}', url)
+                        watch['notification_urls'][i] = re.sub(
+                            r, r'{{\1}}', url)
 
             except:
                 continue
@@ -653,15 +681,19 @@ class ChangeDetectionStore:
         # System wide
         n_body = self.data['settings']['application'].get('notification_body')
         if n_body:
-            self.data['settings']['application']['notification_body'] = re.sub(r, r'{{\1}}', n_body)
+            self.data['settings']['application']['notification_body'] = re.sub(
+                r, r'{{\1}}', n_body)
 
-        n_title = self.data['settings']['application'].get('notification_title')
+        n_title = self.data['settings']['application'].get(
+            'notification_title')
         if n_body:
-            self.data['settings']['application']['notification_title'] = re.sub(r, r'{{\1}}', n_title)
+            self.data['settings']['application']['notification_title'] = re.sub(
+                r, r'{{\1}}', n_title)
 
-        n_urls =  self.data['settings']['application'].get('notification_urls')
+        n_urls = self.data['settings']['application'].get('notification_urls')
         if n_urls:
             for i, url in enumerate(n_urls):
-                self.data['settings']['application']['notification_urls'][i] = re.sub(r, r'{{\1}}', url)
+                self.data['settings']['application']['notification_urls'][i] = re.sub(
+                    r, r'{{\1}}', url)
 
         return

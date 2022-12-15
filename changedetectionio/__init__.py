@@ -318,7 +318,7 @@ def changedetection_app(config=None, datastore_o=None):
         fg = FeedGenerator()
         fg.title('changedetection.io')
         fg.description('Feed description')
-        fg.link(href='https://changedetection.io')
+        fg.link(href='https://ramco.com', rel='alternate')
 
         for watch in sorted_watches:
 

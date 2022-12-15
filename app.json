@@ -1,11 +1,10 @@
 {
-  "name": "ChangeDetection.io",
+  "name": "RaiSE",
   "description": "The best and simplest self-hosted open source website change detection monitoring and notification service.",
   "keywords": [
     "changedetection",
     "website monitoring"
   ],
-  "repository": "https://github.com/dgtlmoon/changedetection.io",
   "success_url": "/",
   "scripts": {
   },
