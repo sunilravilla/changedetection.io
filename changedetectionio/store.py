@@ -48,14 +48,14 @@ class ChangeDetectionStore:
             datastore_path=datastore_path, default={}))
 
         if path.isfile('changedetectionio/source.txt'):
-            with open('changedetectionio/source.txt') as f:
+            with open('changedetectionio/source.txt', encoding='utf-8', errors='ignore') as f:
                 # Should be set in Dockerfile to look for /source.txt , this will give us the git commit #
                 # So when someone gives us a backup file to examine, we know exactly what code they were running.
                 self.__data['build_sha'] = f.read()
 
         try:
             # @todo retest with ", encoding='utf-8'"
-            with open(self.json_store_path) as json_file:
+            with open(self.json_store_path, encoding='utf-8', errors='ignore') as json_file:
                 from_disk = json.load(json_file)
 
                 # @todo isnt there a way todo this dict.update recursively?
@@ -386,7 +386,7 @@ class ChangeDetectionStore:
 
         self.data['watching'][watch_uuid].ensure_data_dir_exists()
 
-        with open(target_path, 'wb') as f:
+        with open(target_path, 'wb', encoding='utf-8', errors='ignore') as f:
             f.write(screenshot)
             f.close()
 
@@ -415,7 +415,7 @@ class ChangeDetectionStore:
             target_path = os.path.join(
                 self.datastore_path, watch_uuid, "elements.json")
 
-        with open(target_path, 'w') as f:
+        with open(target_path, 'w', encoding='utf-8', errors='ignore') as f:
             f.write(json.dumps(data))
             f.close()
 
@@ -437,7 +437,7 @@ class ChangeDetectionStore:
                 # Re #286  - First write to a temp file, then confirm it looks OK and rename it
                 # This is a fairly basic strategy to deal with the case that the file is corrupted,
                 # system was out of memory, out of RAM etc
-                with open(self.json_store_path+".tmp", 'w') as json_file:
+                with open(self.json_store_path+".tmp", 'w', encoding='utf-8', errors='ignore') as json_file:
                     json.dump(data, json_file, indent=4)
                 os.replace(self.json_store_path+".tmp", self.json_store_path)
             except Exception as e:

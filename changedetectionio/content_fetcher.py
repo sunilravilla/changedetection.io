@@ -9,6 +9,7 @@ import time
 
 visualselector_xpath_selectors = 'div,span,form,table,tbody,tr,td,a,p,ul,li,h1,h2,h3,h4, header, footer, section, article, aside, details, main, nav, section, summary'
 
+
 class Non200ErrorCodeReceived(Exception):
     def __init__(self, status_code, url, screenshot=None, xpath_data=None, page_html=None):
         # Set this so we can use it in other parts of the app
@@ -32,6 +33,7 @@ class JSActionExceptions(Exception):
         self.message = message
         return
 
+
 class BrowserStepsStepTimout(Exception):
     def __init__(self, step_n):
         self.step_n = step_n
@@ -47,6 +49,7 @@ class PageUnloadable(Exception):
         self.message = message
         return
 
+
 class EmptyReply(Exception):
     def __init__(self, status_code, url, screenshot=None):
         # Set this so we can use it in other parts of the app
@@ -54,6 +57,7 @@ class EmptyReply(Exception):
         self.url = url
         self.screenshot = screenshot
         return
+
 
 class ScreenshotUnavailable(Exception):
     def __init__(self, status_code, url, page_html=None):
@@ -65,6 +69,7 @@ class ScreenshotUnavailable(Exception):
             self.page_text = html_to_text(page_html)
         return
 
+
 class ReplyWithContentButNoText(Exception):
     def __init__(self, status_code, url, screenshot=None):
         # Set this so we can use it in other parts of the app
@@ -72,6 +77,7 @@ class ReplyWithContentButNoText(Exception):
         self.url = url
         self.screenshot = screenshot
         return
+
 
 class Fetcher():
     error = None
@@ -98,8 +104,8 @@ class Fetcher():
     def __init__(self):
         from pkg_resources import resource_string
         # The code that scrapes elements and makes a list of elements/size/position to click on in the VisualSelector
-        self.xpath_element_js = resource_string(__name__, "res/xpath_element_scraper.js").decode('utf-8')
-
+        self.xpath_element_js = resource_string(
+            __name__, "res/xpath_element_scraper.js").decode('utf-8')
 
     @abstractmethod
     def get_error(self):
@@ -146,11 +152,13 @@ class Fetcher():
             interface = steppable_browser_interface()
             interface.page = self.page
 
-            valid_steps = filter(lambda s: (s['operation'] and len(s['operation']) and s['operation'] != 'Choose one' and s['operation'] != 'Goto site'), self.browser_steps)
+            valid_steps = filter(lambda s: (s['operation'] and len(
+                s['operation']) and s['operation'] != 'Choose one' and s['operation'] != 'Goto site'), self.browser_steps)
 
             for step in valid_steps:
                 step_n += 1
-                print(">> Iterating check - browser Step n {} - {}...".format(step_n, step['operation']))
+                print(
+                    ">> Iterating check - browser Step n {} - {}...".format(step_n, step['operation']))
                 self.screenshot_step("before-"+str(step_n))
                 self.save_step_html("before-"+str(step_n))
                 try:
@@ -158,9 +166,11 @@ class Fetcher():
                     selector = step['selector']
                     # Support for jinja2 template in step values, with date module added
                     if '{%' in step['optional_value'] or '{{' in step['optional_value']:
-                        optional_value = str(jinja2_env.from_string(step['optional_value']).render())
+                        optional_value = str(jinja2_env.from_string(
+                            step['optional_value']).render())
                     if '{%' in step['selector'] or '{{' in step['selector']:
-                        selector = str(jinja2_env.from_string(step['selector']).render())
+                        selector = str(jinja2_env.from_string(
+                            step['selector']).render())
 
                     getattr(interface, "call_action")(action_name=step['operation'],
                                                       selector=selector,
@@ -171,13 +181,13 @@ class Fetcher():
                     # Stop processing here
                     raise BrowserStepsStepTimout(step_n=step_n)
 
-
-
     # It's always good to reset these
+
     def delete_browser_steps_screenshots(self):
         import glob
         if self.browser_steps_screenshot_path is not None:
-            dest = os.path.join(self.browser_steps_screenshot_path, 'step_*.jpeg')
+            dest = os.path.join(
+                self.browser_steps_screenshot_path, 'step_*.jpeg')
             files = glob.glob(dest)
             for f in files:
                 os.unlink(f)
@@ -185,6 +195,8 @@ class Fetcher():
 #   Maybe for the future, each fetcher provides its own diff output, could be used for text, image
 #   the current one would return javascript output (as we use JS to generate the diff)
 #
+
+
 def available_fetchers():
     # See the if statement at the bottom of this file for how we switch between playwright and webdriver
     import inspect
@@ -199,26 +211,30 @@ def available_fetchers():
 
     return p
 
+
 class base_html_playwright(Fetcher):
     fetcher_description = "Playwright {}/Javascript".format(
         os.getenv("PLAYWRIGHT_BROWSER_TYPE", 'chromium').capitalize()
     )
     if os.getenv("PLAYWRIGHT_DRIVER_URL"):
-        fetcher_description += " via '{}'".format(os.getenv("PLAYWRIGHT_DRIVER_URL"))
+        fetcher_description += " via '{}'".format(
+            os.getenv("PLAYWRIGHT_DRIVER_URL"))
 
     browser_type = ''
     command_executor = ''
 
     # Configs for Proxy setup
     # In the ENV vars, is prefixed with "playwright_proxy_", so it is for example "playwright_proxy_server"
-    playwright_proxy_settings_mappings = ['bypass', 'server', 'username', 'password']
+    playwright_proxy_settings_mappings = [
+        'bypass', 'server', 'username', 'password']
 
     proxy = None
 
     def __init__(self, proxy_override=None):
         super().__init__()
         # .strip('"') is going to save someone a lot of time when they accidently wrap the env value
-        self.browser_type = os.getenv("PLAYWRIGHT_BROWSER_TYPE", 'chromium').strip('"')
+        self.browser_type = os.getenv(
+            "PLAYWRIGHT_BROWSER_TYPE", 'chromium').strip('"')
         self.command_executor = os.getenv(
             "PLAYWRIGHT_DRIVER_URL",
             'ws://playwright-chrome:3000'
@@ -241,20 +257,24 @@ class base_html_playwright(Fetcher):
     def screenshot_step(self, step_n=''):
 
         # There's a bug where we need to do it twice or it doesnt take the whole page, dont know why.
-        self.page.screenshot(type='jpeg', clip={'x': 1.0, 'y': 1.0, 'width': 1280, 'height': 1024})
-        screenshot = self.page.screenshot(type='jpeg', full_page=True, quality=85)
+        self.page.screenshot(type='jpeg', clip={
+                             'x': 1.0, 'y': 1.0, 'width': 1280, 'height': 1024})
+        screenshot = self.page.screenshot(
+            type='jpeg', full_page=True, quality=85)
 
         if self.browser_steps_screenshot_path is not None:
-            destination = os.path.join(self.browser_steps_screenshot_path, 'step_{}.jpeg'.format(step_n))
+            destination = os.path.join(
+                self.browser_steps_screenshot_path, 'step_{}.jpeg'.format(step_n))
             logging.debug("Saving step screenshot to {}".format(destination))
-            with open(destination, 'wb') as f:
+            with open(destination, 'wb', encoding='utf-8', errors='ignore') as f:
                 f.write(screenshot)
 
     def save_step_html(self, step_n):
         content = self.page.content()
-        destination = os.path.join(self.browser_steps_screenshot_path, 'step_{}.html'.format(step_n))
+        destination = os.path.join(
+            self.browser_steps_screenshot_path, 'step_{}.html'.format(step_n))
         logging.debug("Saving step HTML to {}".format(destination))
-        with open(destination, 'w') as f:
+        with open(destination, 'w', encoding='utf-8', errors='ignore') as f:
             f.write(content)
 
     def run(self,
@@ -277,12 +297,14 @@ class base_html_playwright(Fetcher):
             # Seemed to cause a connection Exception even tho I can see it connect
             # self.browser = browser_type.connect(self.command_executor, timeout=timeout*1000)
             # 60,000 connection timeout only
-            browser = browser_type.connect_over_cdp(self.command_executor, timeout=60000)
+            browser = browser_type.connect_over_cdp(
+                self.command_executor, timeout=60000)
 
             # Set user agent to prevent Cloudflare from blocking the browser
             # Use the default one configured in the App.py model that's passed from fetch_site_status.py
             context = browser.new_context(
-                user_agent=request_headers['User-Agent'] if request_headers.get('User-Agent') else 'Mozilla/5.0',
+                user_agent=request_headers['User-Agent'] if request_headers.get(
+                    'User-Agent') else 'Mozilla/5.0',
                 proxy=self.proxy,
                 # This is needed to enable JavaScript execution on GitHub and others
                 bypass_csp=True,
@@ -301,10 +323,10 @@ class base_html_playwright(Fetcher):
                 self.page.set_default_timeout(90000)
 
                 # Listen for all console events and handle errors
-                self.page.on("console", lambda msg: print(f"Playwright console: Watch URL: {url} {msg.type}: {msg.text} {msg.args}"))
+                self.page.on("console", lambda msg: print(
+                    f"Playwright console: Watch URL: {url} {msg.type}: {msg.text} {msg.args}"))
 
                 # Bug - never set viewport size BEFORE page.goto
-
 
                 # Waits for the next navigation. Using Python context manager
                 # prevents a race condition between clicking and waiting for a navigation.
@@ -313,7 +335,8 @@ class base_html_playwright(Fetcher):
                 # - `'commit'` - consider operation to be finished when network response is received and the document started loading.
                 # Better to not use any smarts from Playwright and just wait an arbitrary number of seconds
                 # This seemed to solve nearly all 'TimeoutErrors'
-                extra_wait = int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay
+                extra_wait = int(os.getenv(
+                    "WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay
                 self.page.wait_for_timeout(extra_wait * 1000)
 
                 if self.webdriver_js_execute_code is not None and len(self.webdriver_js_execute_code):
@@ -325,17 +348,16 @@ class base_html_playwright(Fetcher):
                 # This can be ok, we will try to grab what we could retrieve
                 pass
             except Exception as e:
-                print ("other exception when page.goto")
-                print (str(e))
+                print("other exception when page.goto")
+                print(str(e))
                 context.close()
                 browser.close()
                 raise PageUnloadable(url=url, status_code=None)
 
-
             if response is None:
                 context.close()
                 browser.close()
-                print ("response object was none")
+                print("response object was none")
                 raise EmptyReply(url=url, status_code=None)
 
             # Bug 2(?) Set the viewport size AFTER loading the page
@@ -344,9 +366,9 @@ class base_html_playwright(Fetcher):
             # Run Browser Steps here
             self.iterate_browser_steps()
 
-            extra_wait = int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay
+            extra_wait = int(os.getenv(
+                "WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay
             time.sleep(extra_wait)
-
 
             self.content = self.page.content()
             self.status_code = response.status
@@ -354,7 +376,7 @@ class base_html_playwright(Fetcher):
             if len(self.page.content().strip()) == 0:
                 context.close()
                 browser.close()
-                print ("Content was empty")
+                print("Content was empty")
                 raise EmptyReply(url=url, status_code=None)
 
             # Bug 2(?) Set the viewport size AFTER loading the page
@@ -366,11 +388,13 @@ class base_html_playwright(Fetcher):
 
             # So we can find an element on the page where its selector was entered manually (maybe not xPath etc)
             if current_include_filters is not None:
-                self.page.evaluate("var include_filters={}".format(json.dumps(current_include_filters)))
+                self.page.evaluate("var include_filters={}".format(
+                    json.dumps(current_include_filters)))
             else:
                 self.page.evaluate("var include_filters=''")
 
-            self.xpath_data = self.page.evaluate("async () => {" + self.xpath_element_js.replace('%ELEMENTS%', visualselector_xpath_selectors) + "}")
+            self.xpath_data = self.page.evaluate(
+                "async () => {" + self.xpath_element_js.replace('%ELEMENTS%', visualselector_xpath_selectors) + "}")
 
             # Bug 3 in Playwright screenshot handling
             # Some bug where it gives the wrong screenshot size, but making a request with the clip set first seems to solve it
@@ -381,9 +405,11 @@ class base_html_playwright(Fetcher):
             # acceptable screenshot quality here
             try:
                 # Quality set to 1 because it's not used, just used as a work-around for a bug, no need to change this.
-                self.page.screenshot(type='jpeg', clip={'x': 1.0, 'y': 1.0, 'width': 1280, 'height': 1024}, quality=1)
+                self.page.screenshot(type='jpeg', clip={
+                                     'x': 1.0, 'y': 1.0, 'width': 1280, 'height': 1024}, quality=1)
                 # The actual screenshot
-                self.screenshot = self.page.screenshot(type='jpeg', full_page=True, quality=int(os.getenv("PLAYWRIGHT_SCREENSHOT_QUALITY", 72)))
+                self.screenshot = self.page.screenshot(type='jpeg', full_page=True, quality=int(
+                    os.getenv("PLAYWRIGHT_SCREENSHOT_QUALITY", 72)))
             except Exception as e:
                 context.close()
                 browser.close()
@@ -392,9 +418,11 @@ class base_html_playwright(Fetcher):
             context.close()
             browser.close()
 
+
 class base_html_webdriver(Fetcher):
     if os.getenv("WEBDRIVER_URL"):
-        fetcher_description = "WebDriver Chrome/Javascript via '{}'".format(os.getenv("WEBDRIVER_URL"))
+        fetcher_description = "WebDriver Chrome/Javascript via '{}'".format(
+            os.getenv("WEBDRIVER_URL"))
     else:
         fetcher_description = "WebDriver Chrome/Javascript"
 
@@ -412,7 +440,8 @@ class base_html_webdriver(Fetcher):
         from selenium.webdriver.common.proxy import Proxy as SeleniumProxy
 
         # .strip('"') is going to save someone a lot of time when they accidently wrap the env value
-        self.command_executor = os.getenv("WEBDRIVER_URL", 'http://browser-chrome:4444/wd/hub').strip('"')
+        self.command_executor = os.getenv(
+            "WEBDRIVER_URL", 'http://browser-chrome:4444/wd/hub').strip('"')
 
         # If any proxy settings are enabled, then we should setup the proxy object
         proxy_args = {}
@@ -462,12 +491,14 @@ class base_html_webdriver(Fetcher):
             raise
 
         self.driver.set_window_size(1280, 1024)
-        self.driver.implicitly_wait(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
+        self.driver.implicitly_wait(
+            int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
 
         if self.webdriver_js_execute_code is not None:
             self.driver.execute_script(self.webdriver_js_execute_code)
             # Selenium doesn't automatically wait for actions as good as Playwright, so wait again
-            self.driver.implicitly_wait(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
+            self.driver.implicitly_wait(
+                int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)))
 
         # @todo - how to check this? is it possible?
         self.status_code = 200
@@ -475,7 +506,8 @@ class base_html_webdriver(Fetcher):
         # raise EmptyReply(url=url, status_code=r.status_code)
 
         # @todo - dom wait loaded?
-        time.sleep(int(os.getenv("WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay)
+        time.sleep(int(os.getenv(
+            "WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay)
         self.content = self.driver.page_source
         self.headers = {}
 
@@ -527,7 +559,8 @@ class html_requests(Fetcher):
 
         # Allows override the proxy on a per-request basis
         if self.proxy_override:
-            proxies = {'http': self.proxy_override, 'https': self.proxy_override, 'ftp': self.proxy_override}
+            proxies = {'http': self.proxy_override,
+                       'https': self.proxy_override, 'ftp': self.proxy_override}
         else:
             if self.system_http_proxy:
                 proxies['http'] = self.system_http_proxy
@@ -558,7 +591,8 @@ class html_requests(Fetcher):
         # @todo maybe you really want to test zero-byte return pages?
         if r.status_code != 200 and not ignore_status_codes:
             # maybe check with content works?
-            raise Non200ErrorCodeReceived(url=url, status_code=r.status_code, page_html=r.text)
+            raise Non200ErrorCodeReceived(
+                url=url, status_code=r.status_code, page_html=r.text)
 
         self.status_code = r.status_code
         self.content = r.text

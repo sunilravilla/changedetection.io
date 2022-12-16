@@ -1,64 +1,70 @@
+from changedetectionio.notification import (
+    default_notification_format_for_watch
+)
 from distutils.util import strtobool
 import logging
 import os
 import time
 import uuid
 
-minimum_seconds_recheck_time = int(os.getenv('MINIMUM_SECONDS_RECHECK_TIME', 60))
-mtable = {'seconds': 1, 'minutes': 60, 'hours': 3600, 'days': 86400, 'weeks': 86400 * 7}
-
-from changedetectionio.notification import (
-    default_notification_format_for_watch
-)
+minimum_seconds_recheck_time = int(
+    os.getenv('MINIMUM_SECONDS_RECHECK_TIME', 60))
+mtable = {'seconds': 1, 'minutes': 60,
+          'hours': 3600, 'days': 86400, 'weeks': 86400 * 7}
 
 
 class model(dict):
     __newest_history_key = None
-    __history_n=0
+    __history_n = 0
     __base_config = {
-            #'history': {},  # Dict of timestamp and output stripped filename (removed)
-            #'newest_history_key': 0, (removed, taken from history.txt index)
-            'body': None,
-            'check_unique_lines': False, # On change-detected, compare against all history if its something new
-            'check_count': 0,
-            'consecutive_filter_failures': 0, # Every time the CSS/xPath filter cannot be located, reset when all is fine.
-            'extract_text': [],  # Extract text by regex after filters
-            'extract_title_as_title': False,
-            'fetch_backend': None,
-            'filter_failure_notification_send': strtobool(os.getenv('FILTER_FAILURE_NOTIFICATION_SEND_DEFAULT', 'True')),
-            'has_ldjson_price_data': None,
-            'track_ldjson_price_data': None,
-            'headers': {},  # Extra headers to send
-            'ignore_text': [],  # List of text to ignore when calculating the comparison checksum
-            'include_filters': [],
-            'last_checked': 0,
-            'last_error': False,
-            'last_viewed': 0,  # history key value of the last viewed via the [diff] link
-            'method': 'GET',
-             # Custom notification content
-            'notification_body': None,
-            'notification_format': default_notification_format_for_watch,
-            'notification_muted': False,
-            'notification_title': None,
-            'notification_screenshot': False, # Include the latest screenshot if available and supported by the apprise URL
-            'notification_urls': [],  # List of URLs to add to the notification Queue (Usually AppRise)
-            'paused': False,
-            'previous_md5': False,
-            'proxy': None, # Preferred proxy connection
-            'subtractive_selectors': [],
-            'tag': None,
-            'text_should_not_be_present': [], # Text that should not present
-            # Re #110, so then if this is set to None, we know to use the default value instead
-            # Requires setting to None on submit if it's the same as the default
-            # Should be all None by default, so we use the system default in this case.
-            'time_between_check': {'weeks': None, 'days': None, 'hours': None, 'minutes': None, 'seconds': None},
-            'title': None,
-            'trigger_text': [],  # List of text or regex to wait for until a change is detected
-            'url': None,
-            'uuid': str(uuid.uuid4()),
-            'webdriver_delay': None,
-            'webdriver_js_execute_code': None, # Run before change-detection
-        }
+        # 'history': {},  # Dict of timestamp and output stripped filename (removed)
+        # 'newest_history_key': 0, (removed, taken from history.txt index)
+        'body': None,
+        # On change-detected, compare against all history if its something new
+        'check_unique_lines': False,
+        'check_count': 0,
+        # Every time the CSS/xPath filter cannot be located, reset when all is fine.
+        'consecutive_filter_failures': 0,
+        'extract_text': [],  # Extract text by regex after filters
+        'extract_title_as_title': False,
+        'fetch_backend': None,
+        'filter_failure_notification_send': strtobool(os.getenv('FILTER_FAILURE_NOTIFICATION_SEND_DEFAULT', 'True')),
+        'has_ldjson_price_data': None,
+        'track_ldjson_price_data': None,
+        'headers': {},  # Extra headers to send
+        'ignore_text': [],  # List of text to ignore when calculating the comparison checksum
+        'include_filters': [],
+        'last_checked': 0,
+        'last_error': False,
+        # history key value of the last viewed via the [diff] link
+        'last_viewed': 0,
+        'method': 'GET',
+        # Custom notification content
+        'notification_body': None,
+        'notification_format': default_notification_format_for_watch,
+        'notification_muted': False,
+        'notification_title': None,
+        # Include the latest screenshot if available and supported by the apprise URL
+        'notification_screenshot': False,
+        # List of URLs to add to the notification Queue (Usually AppRise)
+        'notification_urls': [],
+        'paused': False,
+        'previous_md5': False,
+        'proxy': None,  # Preferred proxy connection
+        'subtractive_selectors': [],
+        'tag': None,
+        'text_should_not_be_present': [],  # Text that should not present
+        # Re #110, so then if this is set to None, we know to use the default value instead
+        # Requires setting to None on submit if it's the same as the default
+        # Should be all None by default, so we use the system default in this case.
+        'time_between_check': {'weeks': None, 'days': None, 'hours': None, 'minutes': None, 'seconds': None},
+        'title': None,
+        'trigger_text': [],  # List of text or regex to wait for until a change is detected
+        'url': None,
+        'uuid': str(uuid.uuid4()),
+        'webdriver_delay': None,
+        'webdriver_js_execute_code': None,  # Run before change-detection
+    }
     jitter_seconds = 0
 
     def __init__(self, *arg, **kw):
@@ -82,14 +88,14 @@ class model(dict):
 
     @property
     def viewed(self):
-        if int(self['last_viewed']) >= int(self.newest_history_key) :
+        if int(self['last_viewed']) >= int(self.newest_history_key):
             return True
 
         return False
 
     def ensure_data_dir_exists(self):
         if not os.path.isdir(self.watch_data_dir):
-            print ("> Creating data dir {}".format(self.watch_data_dir))
+            print("> Creating data dir {}".format(self.watch_data_dir))
             os.mkdir(self.watch_data_dir)
 
     @property
@@ -151,7 +157,7 @@ class model(dict):
         fname = os.path.join(self.watch_data_dir, "history.txt")
         if os.path.isfile(fname):
             logging.debug("Reading history index " + str(time.time()))
-            with open(fname, "r") as f:
+            with open(fname, "r", encoding='utf-8', errors='ignore') as f:
                 for i in f.readlines():
                     if ',' in i:
                         k, v = i.strip().split(',', 2)
@@ -164,7 +170,8 @@ class model(dict):
                             # It's possible that they moved the datadir on older versions
                             # So the snapshot exists but is in a different path
                             snapshot_fname = v.split('/')[-1]
-                            proposed_new_path = os.path.join(self.watch_data_dir, snapshot_fname)
+                            proposed_new_path = os.path.join(
+                                self.watch_data_dir, snapshot_fname)
                             if not os.path.exists(v) and os.path.exists(proposed_new_path):
                                 v = proposed_new_path
 
@@ -191,7 +198,6 @@ class model(dict):
         if len(self.history) <= 1:
             return 0
 
-
         bump = self.history
         return self.__newest_history_key
 
@@ -217,7 +223,7 @@ class model(dict):
         # Append to index
         # @todo check last char was \n
         index_fname = os.path.join(self.watch_data_dir, "history.txt")
-        with open(index_fname, 'a') as f:
+        with open(index_fname, 'a', encoding='utf-8', errors='ignore') as f:
             f.write("{},{}\n".format(timestamp, snapshot_fname))
             f.close()
 
@@ -231,7 +237,8 @@ class model(dict):
     def has_empty_checktime(self):
         # using all() + dictionary comprehension
         # Check if all values are 0 in dictionary
-        res = all(x == None or x == False or x==0 for x in self.get('time_between_check', {}).values())
+        res = all(x == None or x == False or x == 0 for x in self.get(
+            'time_between_check', {}).values())
         return res
 
     def threshold_seconds(self):
@@ -249,7 +256,8 @@ class model(dict):
         # Compare each lines (set) against each history text file (set) looking for something new..
         existing_history = set({})
         for k, v in self.history.items():
-            alist = set([line.decode('utf-8').strip().lower() for line in open(v, 'rb')])
+            alist = set([line.decode('utf-8').strip().lower()
+                        for line in open(v, 'rb')])
             existing_history = existing_history.union(alist)
 
         # Check that everything in local_lines(new stuff) already exists in existing_history - it should
@@ -274,7 +282,6 @@ class model(dict):
         # False is not an option for AppRise, must be type None
         return None
 
-
     def __get_file_ctime(self, filename):
         fname = os.path.join(self.watch_data_dir, filename)
         if os.path.isfile(fname):
@@ -287,7 +294,7 @@ class model(dict):
 
     @property
     def snapshot_text_ctime(self):
-        if self.history_n==0:
+        if self.history_n == 0:
             return False
 
         timestamp = list(self.history.keys())[-1]
@@ -305,7 +312,7 @@ class model(dict):
     def watch_data_dir(self):
         # The base dir of the watch data
         return os.path.join(self.__datastore_path, self['uuid'])
-    
+
     def get_error_text(self):
         """Return the text saved from a previous request that resulted in a non-200 error"""
         fname = os.path.join(self.watch_data_dir, "last-error.txt")
@@ -339,25 +346,27 @@ class model(dict):
                         if not csv_writer:
                             # A file on the disk can be transferred much faster via flask than a string reply
                             csv_output_filename = 'report.csv'
-                            f = open(os.path.join(self.watch_data_dir, csv_output_filename), 'w')
+                            f = open(os.path.join(self.watch_data_dir,
+                                     csv_output_filename), 'w')
                             # @todo some headers in the future
                             #fieldnames = ['Epoch seconds', 'Date']
                             csv_writer = csv.writer(f,
                                                     delimiter=',',
                                                     quotechar='"',
                                                     quoting=csv.QUOTE_MINIMAL,
-                                                    #fieldnames=fieldnames
+                                                    # fieldnames=fieldnames
                                                     )
                             csv_writer.writerow(['Epoch seconds', 'Date'])
                             # csv_writer.writeheader()
 
-                        date_str = datetime.datetime.fromtimestamp(int(k)).strftime('%Y-%m-%d %H:%M:%S')
+                        date_str = datetime.datetime.fromtimestamp(
+                            int(k)).strftime('%Y-%m-%d %H:%M:%S')
                         for r in res:
                             row = [k, date_str]
                             if isinstance(r, str):
                                 row.append(r)
                             else:
-                                row+=r
+                                row += r
                             csv_writer.writerow(row)
 
         if f:

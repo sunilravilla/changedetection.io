@@ -1,7 +1,9 @@
+from apprise.decorators import notify
 import apprise
 from jinja2 import Environment, BaseLoader
 from apprise import NotifyFormat
 import json
+import yagmail
 
 valid_tokens = {
     'base_url': '',
@@ -30,7 +32,7 @@ valid_notification_formats = {
 }
 
 # include the decorator
-from apprise.decorators import notify
+
 
 @notify(on="delete")
 @notify(on="deletes")
@@ -72,29 +74,102 @@ def apprise_custom_api_call_wrapper(body, title, notify_type, *args, **kwargs):
     except ValueError as e:
         pass
 
-
     r(url, headers=headers, data=body)
+
+
+def emailFormatter(n_body, n_title, n_format, url):
+    # clear console
+    print(chr(27) + "[2J")
+
+    # print(">> Process Notification: ", n_body)
+    # print(">> Process Notification: ", n_title)
+    # print(">> Process Notification: ", n_format)
+    # print(">> Process Notification: ", url)
+    # n_body = ['https://www.channelnewsasia.com/international had a change.', '---', '', '', "(added  )[ Berlusconi promises Monza players 'busload of hookers' if they beat big guns ](/sport/berlusconi-promises-monza-players-busload-hookers-if-they-beat-big-guns-3144511)", '(added  ) ', '(added  )                               14/12/2022', '(added  ) ', '(added  )                             [ Sport ](/category/sport)', '(added  ) ', '(added  )                         [ ](/watch/asia-tonight/tue-13-dec-2022-3142796)', '(added  ) ', '(added  )                             [ Watch ](/watch-0)', '(added  ) ', '(added  )                             [ Asia Tonight - S1: Tue 13 Dec 2022 ](/watch/asia-tonight/tue-13-dec-2022-3142796)', '(added  ) ', '(added  )                               13/12/2022 47 mins', "(added  )                         [ Berlusconi promises Monza players 'busload of hookers' if they beat big guns ](/sport/berlusconi-promises-monza-players-busload-hookers-if-they-beat-big-guns-3144511)", '(added  ) ', '(added  )                           14/12/2022', '(added  ) ', '(added  )                         [ Sport ](/category/sport)', '(added  ) ', '<base-url-env-var-not-set>/diff/30094933-830d-4a01-bfcc-ffaff688fe3f', '[ Skip to main content ](#main-content)', '          [ ](/)', '                  Best News Website or Mobile Service', '                  WAN-IFRA Digital Media Awards Worldwide', '                  Best News Website or Mobile Service', '                  Digital Media Awards Worldwide', '          * [ Sign In ](/profile/login)', '          * [ Account ](/profile)', '          * [ My Feed ](/profile/myfeed)', '          * Search', '        [ Hamburger Menu ](#)', '          Close', '            * [Top Stories](/international)', '                + [Singapore](/singapore)', '                + [Asia](/asia)', '                + [World ](/world)', '                + [Commentary](/commentary)', '                + [Sustainability](/sustainability)', '                + [Business](/business)', '                + [Sport](/sport)', '                + [COVID-19](/coronavirus-covid-19)', '            * [Latest News](/latest-news)', '            * [Discover](/discover)', '                  [ ](/discover)', '            * [CNA Insider](/cna-insider)', '                  [ ](/cna-insider)', '            * [Watch](/watch)', '                + [Live TV](/watch)', '                + [News Reports](/watch/all)', '                + [Documentaries & Shows](/watch/programmes)', '                + [TV Schedule](/watch/tv-schedule)', '            * [Listen](/listen)', '                + [CNA938 Live](/listen)',
+    #           '                + [Podcasts](/listen/all)', '                + [Radio Schedule](/listen/cna938/schedule)', '            * [Special Reports](/special-reports)', '                + [Singapore Parliament](/parliament)', '                + [Mental Health](/mental-health)', '                + [Interactives](/interactives)', '                + [World Cup](/football-world-cup-2022/fixtures?inid=cna-main-menu_house_football-world-cup)', '            * [Lifestyle](https://cnalifestyle.channelnewsasia.com/)', '                + [Entertainment](https://cnalifestyle.channelnewsasia.com/entertainment)', '                + [Women](https://cnalifestyle.channelnewsasia.com/women)', '                + [Wellness](https://cnalifestyle.channelnewsasia.com/wellness)', '                + [Living](https://cnalifestyle.channelnewsasia.com/living)', '                + [Style & Beauty](https://cnalifestyle.channelnewsasia.com/style)', '                + [Dining](https://cnalifestyle.channelnewsasia.com/dining)', '                + [Travel](https://cnalifestyle.channelnewsasia.com/travel)', '            * [Luxury](https://cnaluxury.channelnewsasia.com/)', '                + [Experiences](https://cnaluxury.channelnewsasia.com/experiences)', '                + [Obsessions](https://cnaluxury.channelnewsasia.com/obsessions)', '                + [People](https://cnaluxury.channelnewsasia.com/people)', '                + [Remarkable Living](https://cnaluxury.channelnewsasia.com/remarkableliving)', '            * [ CNA Eyewitness](/contact-us)', '                + [Send us a news tip](https://www.channelnewsasia.com/contact-us)', '            * [Branded Content](/branded-content-series)', '                + [Business Blueprint](/news/businessblueprint)', '                + [Health Matters](/news/healthmatters)', '                + [The Asian Traveller](/news/theasiantraveller)', '            * [Weather](https://www.channelnewsasia.com/weather)', '              Edition:', '              * [Singapore](/cna-homepage-singapore)', '              * [Asia](/international)', '            Close', '                  [ ](/)', '                  Close', '                    * [Top Stories](/international)', '                        + [Singapore](/singapore)', '                        + [Asia](/asia)', '                        + [World ](/world)', '                        + [Commentary](/commentary)', '                        + [Sustainability](/sustainability)', '                        + [Business](/business)', '                        + [Sport](/sport)', '                        + [COVID-19](/coronavirus-covid-19)', '                    * [Latest News](/latest-news)']
+    # from n_body if line start with (added )
+
+    n_dict = []
+    tokens = n_body.split("||")
+    # from n_body array split each index with and  add to n_dict as key value pair
+    new_token = {}
+    for token in tokens:
+        # from i split with ==
+        # i.replace("\n", "")
+        new_i = token.split("==")
+        # add to new_token as key value pair dict
+        # new_token.append({new_i[0].replace("\n", ""): new_i[1].replace("\n", "")})
+        new_token[new_i[0].replace("\n", "").strip()
+                  ] = new_i[1].strip()
+    print(new_token)
+    # from new_token['diff_url']
+    URL = new_token['diff_url']
+    page = requests.get(URL, timeout=20, auth=HTTPBasicAuth(
+        'defaultuser@changedetection.io', 'Ramco@123'))
+
+    body = BeautifulSoup(page.content, 'html.parser')
+
+    table = body.find('ins', class_='change')
+    print(table, flush=True)
+
+    # for i in new_token:
+    # embed new_token['diff_url'] in iframe send as email
+    # print(new_token['diff_url'])
+    # print(new_token['diff_full'], flush=True)
+    # for i in new_token['diff_full'].split("\n"):
+    #     print(i, flush=True)
+    #     if i.startswith('(added  )'):
+    #         # removed (added  ) from line
+    #         i = i.replace('(added  )', '')
+    #         title = ''
+    #         link = ''
+    #         # check if i has [ or ]
+    #         if '[' in i and ']' in i:
+    #             title = i.split('[')[1].split(']')[0]
+    #             # trim title
+    #             title = title.strip()
+    #         print(i)
+    # #         take all tec from square brackets as title and data from parentheses as link
+    #
+    #         if '(' in i and ')' in i:
+    #             link = i.split('(')[1].split(')')[0]
+    #             # trim link
+    #             link = link.strip()
+    #         # link = i.split('(')[1].split(')')[0]
+    #         # # trim link
+    #         # link = link.strip()
+    #         # add title and link to dict
+    #         if link != '' or title != '':
+    #             n_dict.append({'title': title, 'link': link})
+    print(n_dict, flush=True)
+
+    # print(n_body)
 
 
 def process_notification(n_object, datastore):
 
     # Insert variables into the notification content
-    notification_parameters = create_notification_parameters(n_object, datastore)
+    notification_parameters = create_notification_parameters(
+        n_object, datastore)
 
     # Get the notification body from datastore
     jinja2_env = Environment(loader=BaseLoader)
-    n_body = jinja2_env.from_string(n_object.get('notification_body', default_notification_body)).render(**notification_parameters)
-    n_title = jinja2_env.from_string(n_object.get('notification_title', default_notification_title)).render(**notification_parameters)
+    n_body = jinja2_env.from_string(n_object.get(
+        'notification_body', default_notification_body)).render(**notification_parameters)
+    n_title = jinja2_env.from_string(n_object.get(
+        'notification_title', default_notification_title)).render(**notification_parameters)
     n_format = valid_notification_formats.get(
         n_object['notification_format'],
         valid_notification_formats[default_notification_format],
     )
-    
+    url = n_object['notification_urls']
+    # emailFormatter(n_body, n_title, n_format, url)
+    # return
     # https://github.com/caronc/apprise/wiki/Development_LogCapture
     # Anything higher than or equal to WARNING (which covers things like Connection errors)
     # raise it as an exception
-    apobjs=[]
-    sent_objs=[]
+    apobjs = []
+    sent_objs = []
     from .apprise_asset import asset
     for url in n_object['notification_urls']:
         url = jinja2_env.from_string(url).render(**notification_parameters)
@@ -148,13 +223,24 @@ def process_notification(n_object, datastore):
 
                 apobj.add(url)
 
-                apobj.notify(
-                    title=n_title,
-                    body=n_body,
-                    body_format=n_format,
-                    # False is not an option for AppRise, must be type None
-                    attach=n_object.get('screenshot', None)
-                )
+                # apobj.notify(
+                #     title=n_title,
+                #     body=n_body,
+                #     body_format=n_format,
+                #     # False is not an option for AppRise, must be type None
+                #     attach=n_object.get('screenshot', None)
+                # )
+                n_title = jinja2_env.from_string(n_object.get(
+                    'notification_title', default_notification_title)).render(**notification_parameters)
+                yag = yagmail.SMTP('aimlops@ramco.com', "kJ@Rv34*xV3",
+                                   host='smtp.office365.com', port=587, smtp_starttls=True, smtp_ssl=False)
+                # take to mail to list from url
+                to_mail = url.split('to=')[1].split('&')[0]
+                # split to mail list to list
+                to_mail = to_mail.split(',')
+                if notification_parameters['diff'] != '':
+                    yag.send(to=to_mail,
+                             subject=n_title, contents=n_body, attachments=n_object.get('screenshot', None))
 
                 apobj.clear()
 
@@ -165,10 +251,10 @@ def process_notification(n_object, datastore):
                 log_value = logs.getvalue()
                 if log_value and 'WARNING' in log_value or 'ERROR' in log_value:
                     raise Exception(log_value)
-                
+
                 sent_objs.append({'title': n_title,
                                   'body': n_body,
-                                  'url' : url,
+                                  'url': url,
                                   'body_format': n_format})
 
     # Return what was sent for better logging - after the for loop
@@ -214,8 +300,10 @@ def create_notification_parameters(n_object, datastore):
             'watch_title': watch_title if watch_title is not None else '',
             'watch_tag': watch_tag if watch_tag is not None else '',
             'diff_url': diff_url,
-            'diff': n_object.get('diff', ''),  # Null default in the case we use a test
-            'diff_full': n_object.get('diff_full', ''),  # Null default in the case we use a test
+            # Null default in the case we use a test
+            'diff': n_object.get('diff', ''),
+            # Null default in the case we use a test
+            'diff_full': n_object.get('diff_full', ''),
             'preview_url': preview_url,
             'current_snapshot': n_object['current_snapshot'] if 'current_snapshot' in n_object else ''
         })

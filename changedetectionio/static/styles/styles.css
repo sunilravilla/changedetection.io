@@ -393,6 +393,7 @@ button.toggle-theme.dark .icon-dark {
 	letter-spacing: 0.1em;
 	line-height: 1.5em;
 	margin: 0;
+	text-shadow: -9px 9px 7px rgba(163, 142, 119, 0.56);
 }
 .new_logo:hover {
 	color: var(--color-text-menu-heading-hover);

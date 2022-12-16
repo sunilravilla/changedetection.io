@@ -9,6 +9,7 @@ import getopt
 import os
 import signal
 import sys
+from dailyoverview import DailyOverview
 
 from . import store, changedetection_app, content_fetcher
 from . import __version__
@@ -17,6 +18,7 @@ from . import __version__
 app = None
 datastore = None
 
+
 def sigterm_handler(_signo, _stack_frame):
     global app
     global datastore
@@ -24,6 +26,7 @@ def sigterm_handler(_signo, _stack_frame):
     print('Shutdown: Got SIGTERM, DB saved to disk')
     datastore.sync_to_json()
 #    raise SystemExit
+
 
 def main():
     global datastore
@@ -45,7 +48,8 @@ def main():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "Ccsd:h:p:", "port")
     except getopt.GetoptError:
-        print('backend.py -s SSL enable -h [host] -p [port] -d [datastore path]')
+        print(
+            'backend.py -s SSL enable -h [host] -p [port] -d [datastore path]')
         sys.exit(2)
 
     create_datastore_dir = False
@@ -83,9 +87,14 @@ def main():
                 "Or use the -C parameter to create the directory.".format(app_config['datastore_path']), file=sys.stderr)
             sys.exit(2)
 
+    datastore = store.ChangeDetectionStore(
+        datastore_path=app_config['datastore_path'], version_tag=__version__)
 
-    datastore = store.ChangeDetectionStore(datastore_path=app_config['datastore_path'], version_tag=__version__)
     app = changedetection_app(app_config, datastore)
+    # invoke the daily overview to async thread
+    overview = DailyOverview(datastore_path)
+
+    # overview.send()
 
     signal.signal(signal.SIGTERM, sigterm_handler)
 
@@ -94,7 +103,7 @@ def main():
         datastore.remove_unused_snapshots()
 
     app.config['datastore_path'] = datastore_path
-
+    #
 
     @app.context_processor
     def inject_version():
@@ -120,7 +129,7 @@ def main():
     #         proxy_set_header X-Forwarded-Prefix /app;
 
     if os.getenv('USE_X_SETTINGS'):
-        print ("USE_X_SETTINGS is ENABLED\n")
+        print("USE_X_SETTINGS is ENABLED\n")
         from werkzeug.middleware.proxy_fix import ProxyFix
         app.wsgi_app = ProxyFix(app.wsgi_app, x_prefix=1, x_host=1)
 
@@ -133,4 +142,3 @@ def main():
 
     else:
         eventlet.wsgi.server(eventlet.listen((host, int(port))), app)
-

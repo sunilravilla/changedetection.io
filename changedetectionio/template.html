@@ -1,0 +1,35 @@
+<html lang="en">
+<head>
+    <title>RaiSE(Ramco AI Scraping Engine)</title>
+    <meta charset="utf-8" />
+</head>
+<body>
+    <div id="container" href="www.ramco.com" style="width: 100%; height: 100%;">
+        <div id="header"
+            style="background-color: #fff9f9; color: #5c5c5c; display: flex; text-align: start; font-size: 150%; font-weight: bold; box-shadow: 1px 1px 4px #3bc6fd; justify-content: space-between;">
+            <p lang="en">R<b style="font-size: 1.2em; font-weight: bold; color: #3bc6fd;">ai</b>SE</p>
+        </div>
+        <div id="greetings"
+            style="color: #5c5c5c; padding: 10px; text-align: start; font-size: 1.2em; font-weight: bold;">
+            <p lang="en">Hi Team,</p>
+            <p lang="en">This is RaiSE, your AI powered assistant. I am here to notify you on Payroll bureau compliance.
+            </p>
+            <p>I am still learning and will be better soon. I am here to help you with your daily tasks. I am still
+                learning and will be better soon.</p>
+        </div>
+        <div id="change" style="color: #5c5c5c; padding: 10px; text-align: start; font-size: 1.2em; font-weight: bold;">
+            <p lang="en">We detected a small change in {{watch_tag}} for <a href="{{watch_url}}">{{ watch_title }}</a>.
+            </p>
+        </div>
+        <div id="diff"
+            style="color: #6d6d6d; padding: 10px; text-align: start; font-size: 1.2em; font-weight: bold; text-decoration: dashed;">
+            <p lang="en">Here is the diff: <a href="{{diff_url}}">Link </a>in {{watch_tag}} for <a
+                    href="{{watch_url}}">{{watch_url}}</a>.</p>
+        </div>
+        <div id="diff"
+            style="border: 1px solid #5c5c5c; color: #838383; text-align: start; font-size: 1.2em; font-weight: bold;">
+            <p style="background-color: #d6ffd6;">{{ diff }}</p>
+        </div>
+    </div>
+</body>
+</html>
