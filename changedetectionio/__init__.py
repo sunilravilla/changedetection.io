@@ -11,6 +11,7 @@ import threading
 import time
 import timeago
 
+from changedetectionio import queuedWatchMetaData
 from copy import deepcopy
 from distutils.util import strtobool
 from feedgen.feed import FeedGenerator
@@ -421,7 +422,6 @@ def changedetection_app(config=None, datastore_o=None):
                 sorted_watches.append(watch)
 
         existing_tags = datastore.get_all_tags()
-
         form = forms.quickWatchForm(request.form)
         print("form", form, flush=True)
         output = render_template("watch-overview.html",
@@ -435,7 +435,7 @@ def changedetection_app(config=None, datastore_o=None):
                                  hosted_sticky=os.getenv(
                                      "SALTED_PASS", False) == False,
                                  guid=datastore.data['app_guid'],
-                                 queued_uuids=[uuid for p, uuid in update_q.queue])
+                                 queued_uuids=[q_uuid.item['uuid'] for q_uuid in update_q.queue])
 
         if session.get('share-link'):
             del(session['share-link'])
@@ -617,25 +617,13 @@ def changedetection_app(config=None, datastore_o=None):
                     using_default_check_time = False
                     break
 
-            # Use the default if its the same as system wide
+            # Use the default if it's the same as system-wide.
             if form.fetch_backend.data == datastore.data['settings']['application']['fetch_backend']:
                 extra_update_obj['fetch_backend'] = None
 
              # Ignore text
             form_ignore_text = form.ignore_text.data
             datastore.data['watching'][uuid]['ignore_text'] = form_ignore_text
-
-            # Reset the previous_md5 so we process a new snapshot including stripping ignore text.
-            if form_ignore_text:
-                if len(datastore.data['watching'][uuid].history):
-                    extra_update_obj['previous_md5'] = get_current_checksum_include_ignore_text(
-                        uuid=uuid)
-
-            # Reset the previous_md5 so we process a new snapshot including stripping ignore text.
-            if form.include_filters.data != datastore.data['watching'][uuid].get('include_filters', []):
-                if len(datastore.data['watching'][uuid].history):
-                    extra_update_obj['previous_md5'] = get_current_checksum_include_ignore_text(
-                        uuid=uuid)
 
             # Be sure proxy value is None
             if datastore.proxy_list is not None and form.data['proxy'] == '':
@@ -654,7 +642,8 @@ def changedetection_app(config=None, datastore_o=None):
             datastore.needs_write_urgent = True
 
             # Queue the watch for immediate recheck, with a higher priority
-            update_q.put((1, uuid))
+            update_q.put(queuedWatchMetaData.PrioritizedItem(
+                priority=1, item={'uuid': uuid, 'skip_when_checksum_same': False}))
 
             # Diff page [edit] link should go back to diff page
             if request.args.get("next") and request.args.get("next") == 'diff':
@@ -804,7 +793,8 @@ def changedetection_app(config=None, datastore_o=None):
                 importer.run(data=request.values.get('urls'),
                              flash=flash, datastore=datastore)
                 for uuid in importer.new_uuids:
-                    update_q.put((1, uuid))
+                    update_q.put(queuedWatchMetaData.PrioritizedItem(
+                        priority=1, item={'uuid': uuid, 'skip_when_checksum_same': True}))
 
                 if len(importer.remaining_data) == 0:
                     return redirect(url_for('index'))
@@ -818,7 +808,8 @@ def changedetection_app(config=None, datastore_o=None):
                 d_importer.run(data=request.values.get(
                     'distill-io'), flash=flash, datastore=datastore)
                 for uuid in d_importer.new_uuids:
-                    update_q.put((1, uuid))
+                    update_q.put(queuedWatchMetaData.PrioritizedItem(
+                        priority=1, item={'uuid': uuid, 'skip_when_checksum_same': True}))
 
         # Could be some remaining, or we could be on GET
         output = render_template("import.html",
@@ -1197,7 +1188,8 @@ def changedetection_app(config=None, datastore_o=None):
 
         if not add_paused and new_uuid:
             # Straight into the queue.
-            update_q.put((1, new_uuid))
+            update_q.put(queuedWatchMetaData.PrioritizedItem(
+                priority=1, item={'uuid': new_uuid}))
             flash("Watch added.")
 
         if add_paused:
@@ -1232,7 +1224,8 @@ def changedetection_app(config=None, datastore_o=None):
             uuid = list(datastore.data['watching'].keys()).pop()
 
         new_uuid = datastore.clone(uuid)
-        update_q.put((5, new_uuid))
+        update_q.put(queuedWatchMetaData.PrioritizedItem(priority=5, item={
+                     'uuid': new_uuid, 'skip_when_checksum_same': True}))
         flash('Cloned.')
 
         return redirect(url_for('index'))
@@ -1240,7 +1233,7 @@ def changedetection_app(config=None, datastore_o=None):
     @app.route("/api/checknow", methods=['GET'])
     @login_required
     def form_watch_checknow():
-
+        # Forced recheck will skip the 'skip if content is the same' rule (, 'reprocess_existing_data': True})))
         tag = request.args.get('tag')
         uuid = request.args.get('uuid')
         i = 0
@@ -1249,11 +1242,10 @@ def changedetection_app(config=None, datastore_o=None):
         for t in running_update_threads:
             running_uuids.append(t.current_uuid)
 
-        # @todo check thread is running and skip
-
         if uuid:
             if uuid not in running_uuids:
-                update_q.put((1, uuid))
+                update_q.put(queuedWatchMetaData.PrioritizedItem(
+                    priority=1, item={'uuid': uuid, 'skip_when_checksum_same': False}))
             i = 1
 
         elif tag != None:
@@ -1261,14 +1253,16 @@ def changedetection_app(config=None, datastore_o=None):
             for watch_uuid, watch in datastore.data['watching'].items():
                 if (tag != None and tag in watch['tag']):
                     if watch_uuid not in running_uuids and not datastore.data['watching'][watch_uuid]['paused']:
-                        update_q.put((1, watch_uuid))
+                        update_q.put(queuedWatchMetaData.PrioritizedItem(priority=1, item={
+                                     'uuid': watch_uuid, 'skip_when_checksum_same': False}))
                         i += 1
 
         else:
             # No tag, no uuid, add everything.
             for watch_uuid, watch in datastore.data['watching'].items():
                 if watch_uuid not in running_uuids and not datastore.data['watching'][watch_uuid]['paused']:
-                    update_q.put((1, watch_uuid))
+                    update_q.put(queuedWatchMetaData.PrioritizedItem(priority=1, item={
+                                 'uuid': watch_uuid, 'skip_when_checksum_same': False}))
                     i += 1
         flash("{} watches are queued for rechecking.".format(i))
         return redirect(url_for('index', tag=tag))
@@ -1317,6 +1311,15 @@ def changedetection_app(config=None, datastore_o=None):
                     )]['notification_muted'] = False
             flash("{} watches un-muted".format(len(uuids)))
 
+        elif (op == 'recheck'):
+            for uuid in uuids:
+                uuid = uuid.strip()
+                if datastore.data['watching'].get(uuid):
+                    # Recheck and require a full reprocessing
+                    update_q.put(queuedWatchMetaData.PrioritizedItem(
+                        priority=1, item={'uuid': uuid, 'skip_when_checksum_same': False}))
+
+            flash("{} watches un-muted".format(len(uuids)))
         elif (op == 'notification-default'):
             from changedetectionio.notification import (
                 default_notification_format_for_watch
@@ -1397,7 +1400,7 @@ def changedetection_app(config=None, datastore_o=None):
 
     import changedetectionio.blueprint.price_data_follower as price_data_follower
     app.register_blueprint(price_data_follower.construct_blueprint(
-        datastore), url_prefix='/price_data_follower')
+        datastore, update_q), url_prefix='/price_data_follower')
 
     # @todo handle ctrl break
     ticker_thread = threading.Thread(
@@ -1555,7 +1558,7 @@ def ticker_thread_check_time_launch_checks():
             seconds_since_last_recheck = now - watch['last_checked']
 
             if seconds_since_last_recheck >= (threshold + watch.jitter_seconds) and seconds_since_last_recheck >= recheck_time_minimum_seconds:
-                if not uuid in running_uuids and uuid not in [q_uuid for p, q_uuid in update_q.queue]:
+                if not uuid in running_uuids and uuid not in [q_uuid.item['uuid'] for q_uuid in update_q.queue]:
 
                     # Proxies can be set to have a limit on seconds between which they can be called
                     watch_proxy = datastore.get_preferred_proxy_for_watch(
@@ -1591,8 +1594,10 @@ def ticker_thread_check_time_launch_checks():
                             priority,
                             watch.jitter_seconds,
                             now - watch['last_checked']))
+
                     # Into the queue with you
-                    update_q.put((priority, uuid))
+                    update_q.put(queuedWatchMetaData.PrioritizedItem(
+                        priority=priority, item={'uuid': uuid, 'skip_when_checksum_same': True}))
 
                     # Reset for next time
                     watch.jitter_seconds = 0

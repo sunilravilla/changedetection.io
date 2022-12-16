@@ -50,6 +50,8 @@ class model(dict):
         'notification_urls': [],
         'paused': False,
         'previous_md5': False,
+        # Used for skipping changedetection entirely
+        'previous_md5_before_filters': False,
         'proxy': None,  # Preferred proxy connection
         'subtractive_selectors': [],
         'tag': None,

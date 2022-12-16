@@ -25,6 +25,11 @@ class Non200ErrorCodeReceived(Exception):
         return
 
 
+class checksumFromPreviousCheckWasTheSame(Exception):
+    def __init__(self):
+        return
+
+
 class JSActionExceptions(Exception):
     def __init__(self, status_code, url, screenshot, message=''):
         self.status_code = status_code
@@ -41,7 +46,7 @@ class BrowserStepsStepTimout(Exception):
 
 
 class PageUnloadable(Exception):
-    def __init__(self, status_code, url, screenshot=False, message=False):
+    def __init__(self, status_code, url, message, screenshot=False):
         # Set this so we can use it in other parts of the app
         self.status_code = status_code
         self.url = url
@@ -318,7 +323,6 @@ class base_html_playwright(Fetcher):
             if len(request_headers):
                 context.set_extra_http_headers(request_headers)
 
-            try:
                 self.page.set_default_navigation_timeout(90000)
                 self.page.set_default_timeout(90000)
 
@@ -326,15 +330,28 @@ class base_html_playwright(Fetcher):
                 self.page.on("console", lambda msg: print(
                     f"Playwright console: Watch URL: {url} {msg.type}: {msg.text} {msg.args}"))
 
-                # Bug - never set viewport size BEFORE page.goto
-
-                # Waits for the next navigation. Using Python context manager
-                # prevents a race condition between clicking and waiting for a navigation.
-                response = self.page.goto(url, wait_until='commit')
+            # Goto page
+            try:
                 # Wait_until = commit
                 # - `'commit'` - consider operation to be finished when network response is received and the document started loading.
                 # Better to not use any smarts from Playwright and just wait an arbitrary number of seconds
                 # This seemed to solve nearly all 'TimeoutErrors'
+                response = self.page.goto(url, wait_until='commit')
+            except playwright._impl._api_types.Error as e:
+                # Retry once - https://github.com/browserless/chrome/issues/2485
+                # Sometimes errors related to invalid cert's and other can be random
+                print("Content Fetcher > retrying request got error - ", str(e))
+                time.sleep(1)
+                response = self.page.goto(url, wait_until='commit')
+
+            except Exception as e:
+                print("Content Fetcher > Other exception when page.goto", str(e))
+                context.close()
+                browser.close()
+                raise PageUnloadable(url=url, status_code=None, message=str(e))
+
+            # Execute any browser steps
+            try:
                 extra_wait = int(os.getenv(
                     "WEBDRIVER_DELAY_BEFORE_CONTENT_READY", 5)) + self.render_extract_delay
                 self.page.wait_for_timeout(extra_wait * 1000)
@@ -348,16 +365,16 @@ class base_html_playwright(Fetcher):
                 # This can be ok, we will try to grab what we could retrieve
                 pass
             except Exception as e:
-                print("other exception when page.goto")
-                print(str(e))
+                print(
+                    "Content Fetcher > Other exception when executing custom JS code", str(e))
                 context.close()
                 browser.close()
-                raise PageUnloadable(url=url, status_code=None)
+                raise PageUnloadable(url=url, status_code=None, message=str(e))
 
             if response is None:
                 context.close()
                 browser.close()
-                print("response object was none")
+                print("Content Fetcher > Response object was none")
                 raise EmptyReply(url=url, status_code=None)
 
             # Bug 2(?) Set the viewport size AFTER loading the page
@@ -376,7 +393,7 @@ class base_html_playwright(Fetcher):
             if len(self.page.content().strip()) == 0:
                 context.close()
                 browser.close()
-                print("Content was empty")
+                print("Content Fetcher > Content was empty")
                 raise EmptyReply(url=url, status_code=None)
 
             # Bug 2(?) Set the viewport size AFTER loading the page
@@ -531,7 +548,7 @@ class base_html_webdriver(Fetcher):
             try:
                 self.driver.quit()
             except Exception as e:
-                print("Exception in chrome shutdown/quit" + str(e))
+                print("Content Fetcher > Exception in chrome shutdown/quit" + str(e))
 
 
 # "html_requests" is listed as the default fetcher in store.py!
