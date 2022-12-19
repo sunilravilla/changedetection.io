@@ -9,9 +9,9 @@ import getopt
 import os
 import signal
 import sys
-from dailyoverview import DailyOverview
+# from dailyoverview import DailyOverview
 
-from . import store, changedetection_app, content_fetcher
+from . import store, changedetection_app, content_fetcher, dailyoverview
 from . import __version__
 
 # Only global so we can access it in the signal handler
@@ -92,7 +92,7 @@ def main():
 
     app = changedetection_app(app_config, datastore)
     # invoke the daily overview to async thread
-    overview = DailyOverview(datastore_path)
+    overview = dailyoverview.DailyOverview(datastore_path)
 
     # overview.send()
 

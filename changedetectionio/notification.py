@@ -301,7 +301,7 @@ def create_notification_parameters(n_object, datastore):
             'watch_tag': watch_tag if watch_tag is not None else '',
             'diff_url': diff_url,
             # Null default in the case we use a test
-            'diff': n_object.get('diff', ''),
+            'diff': n_object.get('diff', '').replace('</br>', '<br>').replace('(added  )', ''),
             # Null default in the case we use a test
             'diff_full': n_object.get('diff_full', ''),
             'preview_url': preview_url,

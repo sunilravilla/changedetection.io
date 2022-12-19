@@ -8,14 +8,15 @@ from pretty_html_table import build_table
 from datetime import datetime
 from datetime import timedelta
 import timeago
+import threading as threading
 
 
 class DailyOverview:
     def __init__(self, datastore_path):
         self.email = os.environ.get('EMAIL') or 'aimlops@ramco.com'
-        self.password = os.environ.get('PASSWORD') or 'kJ@Rv34*xV3'
-        self.recipient = os.environ.get('RECIPIENT') or '14607@ramco.com'
-        self.developer = os.environ.get('DEVELOPER') or '14607@ramco.com'
+        self.password = os.environ.get('EMAIL_PASSWORD') or 'kJ@Rv34*xV3'
+        self.recipient = os.environ.get('RECIPIENTS') or '14607@ramco.com'
+        self.developer = os.environ.get('DEVELOPER_MAIL') or '14607@ramco.com'
         self.triggerTime = os.environ.get('TRIGGERTIME') or '08:00'
         self.yag = yagmail.SMTP(self.email, self.password, host='smtp.office365.com',
                                 port=587, smtp_starttls=True, smtp_ssl=False)
@@ -23,16 +24,19 @@ class DailyOverview:
             str(datetime.now().strftime('%Y-%m-%d'))
         self.body = 'This is the RaiSE statistics overview in the last 24 hours.'
         self.html = ''
-        self.json_store_path = datastore_path or 'C:\\Users\\Gunasekhar\\AppData\\Roaming\\changedetection.io\\'
+        self.json_store_path = datastore_path or 'C:/Users/Gunasekhar/AppData/Roaming/changedetection.io'
         self.changes = []
         # self.getData()
         # self.SendEmail()
+        # create the thread to run the schedule
+        self.thread = threading.Thread(target=self.Schedule)
+        self.thread.start()
         # self.Schedule()
 
     def getData(self):
         self.changes = []
         self.data = {}
-        with open(self.json_store_path+"url-watches.json", encoding='utf-8', errors='ignore') as json_file:
+        with open(self.json_store_path+"/url-watches.json") as json_file:
             self.data = json.load(json_file)
             # print(json.dumps(self.data, indent=4, sort_keys=True))
             self.processData()
@@ -43,8 +47,8 @@ class DailyOverview:
             timea = timeago.format(value['last_checked'], datetime.now())
             self.data['watching'][key]['last_checked'] = timea
             # read last_changed from history.txt file in uuid folder if folder exists
-            if os.path.exists(self.json_store_path+key + "\history.txt"):
-                with open(self.json_store_path+key+"\\history.txt") as history_file:
+            if os.path.exists(self.json_store_path+'/'+key + "/history.txt"):
+                with open(self.json_store_path+'/'+key+"/history.txt") as history_file:
                     history = history_file.readlines()
                     last_changed = history[-1].split(',')[0]
                     # convert timestamp to date
@@ -64,8 +68,8 @@ class DailyOverview:
 
     def Schedule(self):
         print('Scheduling')
-        # schedule.every().day.at(self.triggerTime).do(self.getData)
-        schedule.every(1).minutes.do(self.getData)
+        schedule.every().day.at(self.triggerTime).do(self.getData)
+        # schedule.every(1).minutes.do(self.getData)
         while True:
             schedule.run_pending()
             time.sleep(1)
@@ -101,9 +105,9 @@ class DailyOverview:
         self.html += "</body></html>"
 
     def GetOverview(self):
-        # if self.changes is empty, return empty table
-        if not self.changes:
-            return '<h3>No changes in the last 24 hours</h3>'
+        # if self.changes len is 0, return no changes
+        if len(self.changes) == 0:
+            return "<h2>No Changes in the last 24 hours</h2>"
         print('Getting overview')
         # load self.changes into dataframe
         #
@@ -204,5 +208,6 @@ class DailyOverview:
 
 
 # if __name__ == '__main__':
-#     dailyOverview = DailyOverview()
-#     # dailyOverview.getData()
+#     dailyOverview = DailyOverview(
+#         'C:/Users/Gunasekhar/AppData/Roaming/changedetection.io')
+#     dailyOverview.getData()

@@ -67,7 +67,7 @@ app.config['NEW_VERSION_AVAILABLE'] = False
 
 app.config['LOGIN_DISABLED'] = False
 
-#app.config["EXPLAIN_TEMPLATE_LOADING"] = True
+# app.config["EXPLAIN_TEMPLATE_LOADING"] = True
 
 # Disables caching of the templates
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -197,7 +197,7 @@ def changedetection_app(config=None, datastore_o=None):
     # (instead of the global var)
     app.config['DATASTORE'] = datastore_o
 
-    #app.config.update(config or {})
+    # app.config.update(config or {})
 
     login_manager = flask_login.LoginManager(app)
     login_manager.login_view = 'login'
@@ -1376,13 +1376,14 @@ def changedetection_app(config=None, datastore_o=None):
         watch_json = json.dumps(watch)
 
         try:
+            base_url = os.environ.get("BASE_URL")
             r = requests.request(method="POST",
                                  data={'watch': watch_json},
                                  url="https://changedetection.io/share/share",
                                  headers={'App-Guid': datastore.data['app_guid']})
             res = r.json()
 
-            session['share-link'] = "https://changedetection.io/share/{}".format(
+            session['share-link'] = os.environ.get("BASE_URL")+"/share/{}".format(
                 res['share_key'])
 
         except Exception as e:
@@ -1499,7 +1500,7 @@ def ticker_thread_check_time_launch_checks():
     # Spin up Workers that do the fetching
     # Can be overriden by ENV or use the default settings
     n_workers = int(os.getenv("FETCH_WORKERS",
-                    datastore.data['settings']['requests']['workers']))
+                              datastore.data['settings']['requests']['workers']))
     for _ in range(n_workers):
         new_worker = update_worker.update_worker(
             update_q, notification_q, app, datastore)

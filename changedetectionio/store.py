@@ -55,7 +55,7 @@ class ChangeDetectionStore:
 
         try:
             # @todo retest with ", encoding='utf-8'"
-            with open(self.json_store_path, encoding='utf-8', errors='ignore') as json_file:
+            with open(self.json_store_path) as json_file:
                 from_disk = json.load(json_file)
 
                 # @todo isnt there a way todo this dict.update recursively?
@@ -295,7 +295,7 @@ class ChangeDetectionStore:
         apply_extras = deepcopy(extras)
 
         # Was it a share link? try to fetch the data
-        if (url.startswith("https://changedetection.io/share/")):
+        if (url.startswith(os.environ.get("BASE_URL")+"/share/")):
             try:
                 r = requests.request(method="GET",
                                      url=url,
@@ -386,7 +386,7 @@ class ChangeDetectionStore:
 
         self.data['watching'][watch_uuid].ensure_data_dir_exists()
 
-        with open(target_path, 'wb', encoding='utf-8', errors='ignore') as f:
+        with open(target_path, 'wb') as f:
             f.write(screenshot)
             f.close()
 

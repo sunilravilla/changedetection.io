@@ -29,7 +29,8 @@ def test_share_watch(client, live_server):
     # Add our URL to the import page
     res = client.post(
         url_for("edit_page", uuid="first"),
-        data={"include_filters": include_filters, "url": test_url, "tag": "", "headers": "", 'fetch_backend': "html_requests"},
+        data={"include_filters": include_filters, "url": test_url,
+              "tag": "", "headers": "", 'fetch_backend': "html_requests"},
         follow_redirects=True
     )
     assert b"Updated watch." in res.data
@@ -46,10 +47,12 @@ def test_share_watch(client, live_server):
     )
 
     assert b"Share this link:" in res.data
-    assert b"https://changedetection.io/share/" in res.data
+    # assert b(os.environ.get("BASE_URL")+"/share /") in res.data
+    assert b("{}/share/".format(os.environ.get("BASE_URL"))) in res.data
 
     html = res.data.decode()
-    share_link_search = re.search('<span id="share-link">(.*)</span>', html, re.IGNORECASE)
+    share_link_search = re.search(
+        '<span id="share-link">(.*)</span>', html, re.IGNORECASE)
     assert share_link_search
 
     # Now delete what we have, we will try to re-import it
