@@ -11,7 +11,8 @@ def test_setup(live_server):
 # Unit test of the stripper
 # Always we are dealing in utf-8
 def test_strip_text_func():
-    from changedetectionio import fetch_site_status
+    from ..processors import text_json_diff as fetch_site_status
+
 
     test_content = """
     Some content
@@ -33,10 +34,10 @@ def test_strip_text_func():
 def set_original_ignore_response():
     test_return_data = """<html>
        <body>
-     Some initial text</br>
+     Some initial text<br>
      <p>Which is across multiple lines</p>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      </body>
      </html>
 
@@ -49,10 +50,10 @@ def set_original_ignore_response():
 def set_modified_original_ignore_response():
     test_return_data = """<html>
        <body>
-     Some NEW nice initial text</br>
+     Some NEW nice initial text<br>
      <p>Which is across multiple lines</p>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      <p>new ignore stuff</p>
      <p>blah</p>
      </body>
@@ -68,11 +69,11 @@ def set_modified_original_ignore_response():
 def set_modified_ignore_response():
     test_return_data = """<html>
        <body>
-     Some initial text</br>
+     Some initial text<br>
      <p>Which is across multiple lines</p>
      <P>ZZZZz</P>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      </body>
      </html>
 

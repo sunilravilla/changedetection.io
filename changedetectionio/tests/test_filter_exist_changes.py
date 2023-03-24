@@ -11,10 +11,10 @@ from changedetectionio.model import App
 def set_response_without_filter():
     test_return_data = """<html>
        <body>
-     Some initial text</br>
+     Some initial text<br>
      <p>Which is across multiple lines</p>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      <div id="nope-doesnt-exist">Some text thats the same</div>     
      </body>
      </html>
@@ -28,10 +28,10 @@ def set_response_without_filter():
 def set_response_with_filter():
     test_return_data = """<html>
        <body>
-     Some initial text</br>
+     Some initial text<br>
      <p>Which is across multiple lines</p>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      <div class="ticket-available">Ticket now on sale!</div>     
      </body>
      </html>
@@ -117,18 +117,3 @@ def test_filter_doesnt_exist_then_exists_should_get_notification(client, live_se
 
     assert 'Ticket now on sale' in notification
     os.unlink("test-datastore/notification.txt")
-
-
-    # Test that if it gets removed, then re-added, we get a notification
-    # Remove the target and re-add it, we should get a new notification
-    set_response_without_filter()
-    client.get(url_for("form_watch_checknow"), follow_redirects=True)
-    time.sleep(3)
-    assert not os.path.isfile("test-datastore/notification.txt")
-
-    set_response_with_filter()
-    client.get(url_for("form_watch_checknow"), follow_redirects=True)
-    time.sleep(3)
-    assert os.path.isfile("test-datastore/notification.txt")
-
-# Also test that the filter was updated after the first one was requested

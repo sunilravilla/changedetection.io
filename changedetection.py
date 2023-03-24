@@ -6,7 +6,7 @@
 
 from changedetectionio import changedetection
 import multiprocessing
-import signal
+import sys
 import os
 
 
@@ -36,6 +36,9 @@ if __name__ == '__main__':
     try:
         while True:
             time.sleep(1)
+            if not parse_process.is_alive():
+                # Process died/crashed for some reason, exit with error set
+                sys.exit(1)
 
     except KeyboardInterrupt:
         # parse_process.terminate() not needed, because this process will issue it to the sub-process anyway

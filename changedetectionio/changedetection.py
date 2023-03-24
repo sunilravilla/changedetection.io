@@ -3,11 +3,14 @@
 # Launch as a eventlet.wsgi server instance.
 
 from distutils.util import strtobool
+from json.decoder import JSONDecodeError
+
 import eventlet
 import eventlet.wsgi
 import getopt
 import os
 import signal
+import socket
 import sys
 # from dailyoverview import DailyOverview
 
@@ -31,11 +34,13 @@ def sigterm_handler(_signo, _stack_frame):
 def main():
     global datastore
     global app
-    ssl_mode = False
-    host = ''
-    port = os.environ.get('PORT') or 5000
-    do_cleanup = False
+
     datastore_path = None
+    do_cleanup = False
+    host = ''
+    ipv6_enabled = False
+    port = os.environ.get('PORT') or 5000
+    ssl_mode = False
 
     # On Windows, create and use a default path.
     if os.name == 'nt':
@@ -46,7 +51,7 @@ def main():
         datastore_path = os.path.join(os.getcwd(), "../datastore")
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "Ccsd:h:p:", "port")
+        opts, args = getopt.getopt(sys.argv[1:], "6Ccsd:h:p:", "port")
     except getopt.GetoptError:
         print(
             'backend.py -s SSL enable -h [host] -p [port] -d [datastore path]')
@@ -66,6 +71,10 @@ def main():
 
         if opt == '-d':
             datastore_path = arg
+
+        if opt == '-6':
+            print ("Enabling IPv6 listen support")
+            ipv6_enabled = True
 
         # Cleanup (remove text files that arent in the index)
         if opt == '-c':
@@ -87,8 +96,13 @@ def main():
                 "Or use the -C parameter to create the directory.".format(app_config['datastore_path']), file=sys.stderr)
             sys.exit(2)
 
-    datastore = store.ChangeDetectionStore(
-        datastore_path=app_config['datastore_path'], version_tag=__version__)
+    try:
+        datastore = store.ChangeDetectionStore(datastore_path=app_config['datastore_path'], version_tag=__version__)
+    except JSONDecodeError as e:
+        # Dont' start if the JSON DB looks corrupt
+        print ("ERROR: JSON DB or Proxy List JSON at '{}' appears to be corrupt, aborting".format(app_config['datastore_path']))
+        print(str(e))
+        return
 
     app = changedetection_app(app_config, datastore)
     # invoke the daily overview to async thread
@@ -133,12 +147,14 @@ def main():
         from werkzeug.middleware.proxy_fix import ProxyFix
         app.wsgi_app = ProxyFix(app.wsgi_app, x_prefix=1, x_host=1)
 
+    s_type = socket.AF_INET6 if ipv6_enabled else socket.AF_INET
+
     if ssl_mode:
         # @todo finalise SSL config, but this should get you in the right direction if you need it.
-        eventlet.wsgi.server(eventlet.wrap_ssl(eventlet.listen((host, port)),
+        eventlet.wsgi.server(eventlet.wrap_ssl(eventlet.listen((host, port), s_type),
                                                certfile='cert.pem',
                                                keyfile='privkey.pem',
                                                server_side=True), app)
 
     else:
-        eventlet.wsgi.server(eventlet.listen((host, int(port))), app)
+        eventlet.wsgi.server(eventlet.listen((host, int(port)), s_type), app)

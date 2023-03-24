@@ -1,3 +1,4 @@
+import hashlib
 from abc import abstractmethod
 import chardet
 import json
@@ -85,18 +86,18 @@ class ReplyWithContentButNoText(Exception):
 
 
 class Fetcher():
-    error = None
-    status_code = None
-    content = None
-    headers = None
     browser_steps = None
     browser_steps_screenshot_path = None
-
+    content = None
+    error = None
     fetcher_description = "No description"
+    headers = None
+    status_code = None
     webdriver_js_execute_code = None
-    xpath_element_js = ""
-
     xpath_data = None
+    xpath_element_js = ""
+    instock_data = None
+    instock_data_js = ""
 
     # Will be needed in the future by the VisualSelector, always get this where possible.
     screenshot = False
@@ -111,6 +112,8 @@ class Fetcher():
         # The code that scrapes elements and makes a list of elements/size/position to click on in the VisualSelector
         self.xpath_element_js = resource_string(
             __name__, "res/xpath_element_scraper.js").decode('utf-8')
+        self.instock_data_js = resource_string(
+            __name__, "res/stock-not-in-stock.js").decode('utf-8')
 
     @abstractmethod
     def get_error(self):
@@ -124,7 +127,8 @@ class Fetcher():
             request_body,
             request_method,
             ignore_status_codes=False,
-            current_include_filters=None):
+            current_include_filters=None,
+            is_binary=False):
         # Should set self.error, self.status_code and self.content
         pass
 
@@ -259,11 +263,15 @@ class base_html_playwright(Fetcher):
         if proxy_override:
             self.proxy = {'server': proxy_override}
 
-    def screenshot_step(self, step_n=''):
+        if self.proxy:
+            # Playwright needs separate username and password values
+            from urllib.parse import urlparse
+            parsed = urlparse(self.proxy.get('server'))
+            if parsed.username:
+                self.proxy['username'] = parsed.username
+                self.proxy['password'] = parsed.password
 
-        # There's a bug where we need to do it twice or it doesnt take the whole page, dont know why.
-        self.page.screenshot(type='jpeg', clip={
-                             'x': 1.0, 'y': 1.0, 'width': 1280, 'height': 1024})
+    def screenshot_step(self, step_n=''):
         screenshot = self.page.screenshot(
             type='jpeg', full_page=True, quality=85)
 
@@ -289,7 +297,8 @@ class base_html_playwright(Fetcher):
             request_body,
             request_method,
             ignore_status_codes=False,
-            current_include_filters=None):
+            current_include_filters=None,
+            is_binary=False):
 
         from playwright.sync_api import sync_playwright
         import playwright._impl._api_types
@@ -313,8 +322,9 @@ class base_html_playwright(Fetcher):
                 proxy=self.proxy,
                 # This is needed to enable JavaScript execution on GitHub and others
                 bypass_csp=True,
-                # Can't think why we need the service workers for our use case?
-                service_workers='block',
+                # Should be `allow` or `block` - sites like YouTube can transmit large amounts of data via Service Workers
+                service_workers=os.getenv(
+                    'PLAYWRIGHT_SERVICE_WORKERS', 'allow'),
                 # Should never be needed
                 accept_downloads=False
             )
@@ -377,9 +387,6 @@ class base_html_playwright(Fetcher):
                 print("Content Fetcher > Response object was none")
                 raise EmptyReply(url=url, status_code=None)
 
-            # Bug 2(?) Set the viewport size AFTER loading the page
-            self.page.set_viewport_size({"width": 1280, "height": 1024})
-
             # Run Browser Steps here
             self.iterate_browser_steps()
 
@@ -389,18 +396,13 @@ class base_html_playwright(Fetcher):
 
             self.content = self.page.content()
             self.status_code = response.status
-
             if len(self.page.content().strip()) == 0:
                 context.close()
                 browser.close()
                 print("Content Fetcher > Content was empty")
-                raise EmptyReply(url=url, status_code=None)
-
-            # Bug 2(?) Set the viewport size AFTER loading the page
-            self.page.set_viewport_size({"width": 1280, "height": 1024})
+                raise EmptyReply(url=url, status_code=response.status)
 
             self.status_code = response.status
-            self.content = self.page.content()
             self.headers = response.all_headers()
 
             # So we can find an element on the page where its selector was entered manually (maybe not xPath etc)
@@ -412,6 +414,8 @@ class base_html_playwright(Fetcher):
 
             self.xpath_data = self.page.evaluate(
                 "async () => {" + self.xpath_element_js.replace('%ELEMENTS%', visualselector_xpath_selectors) + "}")
+            self.instock_data = self.page.evaluate(
+                "async () => {" + self.instock_data_js + "}")
 
             # Bug 3 in Playwright screenshot handling
             # Some bug where it gives the wrong screenshot size, but making a request with the clip set first seems to solve it
@@ -421,9 +425,6 @@ class base_html_playwright(Fetcher):
             # which will significantly increase the IO size between the server and client, it's recommended to use the lowest
             # acceptable screenshot quality here
             try:
-                # Quality set to 1 because it's not used, just used as a work-around for a bug, no need to change this.
-                self.page.screenshot(type='jpeg', clip={
-                                     'x': 1.0, 'y': 1.0, 'width': 1280, 'height': 1024}, quality=1)
                 # The actual screenshot
                 self.screenshot = self.page.screenshot(type='jpeg', full_page=True, quality=int(
                     os.getenv("PLAYWRIGHT_SCREENSHOT_QUALITY", 72)))
@@ -487,7 +488,8 @@ class base_html_webdriver(Fetcher):
             request_body,
             request_method,
             ignore_status_codes=False,
-            current_include_filters=None):
+            current_include_filters=None,
+            is_binary=False):
 
         from selenium import webdriver
         from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
@@ -565,7 +567,8 @@ class html_requests(Fetcher):
             request_body,
             request_method,
             ignore_status_codes=False,
-            current_include_filters=None):
+            current_include_filters=None,
+            is_binary=False):
 
         # Make requests use a more modern looking user-agent
         if not 'User-Agent' in request_headers:
@@ -596,10 +599,12 @@ class html_requests(Fetcher):
         # For example - some sites don't tell us it's utf-8, but return utf-8 content
         # This seems to not occur when using webdriver/selenium, it seems to detect the text encoding more reliably.
         # https://github.com/psf/requests/issues/1604 good info about requests encoding detection
-        if not r.headers.get('content-type') or not 'charset=' in r.headers.get('content-type'):
-            encoding = chardet.detect(r.content)['encoding']
-            if encoding:
-                r.encoding = encoding
+        if not is_binary:
+            # Don't run this for PDF (and requests identified as binary) takes a _long_ time
+            if not r.headers.get('content-type') or not 'charset=' in r.headers.get('content-type'):
+                encoding = chardet.detect(r.content)['encoding']
+                if encoding:
+                    r.encoding = encoding
 
         if not r.content or not len(r.content):
             raise EmptyReply(url=url, status_code=r.status_code)
@@ -612,8 +617,14 @@ class html_requests(Fetcher):
                 url=url, status_code=r.status_code, page_html=r.text)
 
         self.status_code = r.status_code
-        self.content = r.text
+        if is_binary:
+            # Binary files just return their checksum until we add something smarter
+            self.content = hashlib.md5(r.content).hexdigest()
+        else:
+            self.content = r.text
+
         self.headers = r.headers
+        self.raw_content = r.content
 
 
 # Decide which is the 'real' HTML webdriver, this is more a system wide config

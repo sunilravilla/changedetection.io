@@ -7,15 +7,18 @@ import yagmail
 
 valid_tokens = {
     'base_url': '',
-    'watch_url': '',
-    'watch_uuid': '',
-    'watch_title': '',
-    'watch_tag': '',
+    'current_snapshot': '',
     'diff': '',
+    'diff_added': '',
     'diff_full': '',
+    'diff_removed': '',
     'diff_url': '',
     'preview_url': '',
-    'current_snapshot': ''
+    'triggered_text': '',
+    'watch_tag': '',
+    'watch_title': '',
+    'watch_url': '',
+    'watch_uuid': '',
 }
 
 default_notification_format_for_watch = 'System default'
@@ -195,10 +198,10 @@ def process_notification(n_object, datastore):
                     url += k + 'avatar_url=https://raw.githubusercontent.com/dgtlmoon/changedetection.io/master/changedetectionio/static/images/avatar-256x256.png'
 
                 if url.startswith('tgram://'):
-                    # Telegram only supports a limit subset of HTML, remove the '<br/>' we place in.
+                    # Telegram only supports a limit subset of HTML, remove the '<br>' we place in.
                     # re https://github.com/dgtlmoon/changedetection.io/issues/555
                     # @todo re-use an existing library we have already imported to strip all non-allowed tags
-                    n_body = n_body.replace('<br/>', '\n')
+                    n_body = n_body.replace('<br>', '\n')
                     n_body = n_body.replace('</br>', '\n')
                     # real limit is 4096, but minus some for extra metadata
                     payload_max_size = 3600
@@ -304,8 +307,22 @@ def create_notification_parameters(n_object, datastore):
             'diff': n_object.get('diff', '').replace('</br>', '<br>').replace('(added  )', ''),
             # Null default in the case we use a test
             'diff_full': n_object.get('diff_full', ''),
+            'current_snapshot': n_object['current_snapshot'] if 'current_snapshot' in n_object else '',
+            # Null default in the case we use a test
+            'diff': n_object.get('diff', ''),
+            # Null default in the case we use a test
+            'diff_added': n_object.get('diff_added', ''),
+            # Null default in the case we use a test
+            'diff_full': n_object.get('diff_full', ''),
+            # Null default in the case we use a test
+            'diff_removed': n_object.get('diff_removed', ''),
+            'diff_url': diff_url,
             'preview_url': preview_url,
-            'current_snapshot': n_object['current_snapshot'] if 'current_snapshot' in n_object else ''
+            'triggered_text': n_object.get('triggered_text', ''),
+            'watch_tag': watch_tag if watch_tag is not None else '',
+            'watch_title': watch_title if watch_title is not None else '',
+            'watch_url': watch_url,
+            'watch_uuid': uuid,
         })
 
     return tokens

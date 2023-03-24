@@ -1,20 +1,20 @@
 from flask import (
     flash
 )
-import json
-import logging
-import os
-import threading
-import time
-import uuid as uuid_builder
+
+from . model import App, Watch
 from copy import deepcopy
 from os import path, unlink
 from threading import Lock
+import json
+import logging
+import os
 import re
 import requests
 import secrets
-
-from . model import App, Watch
+import threading
+import time
+import uuid as uuid_builder
 
 # Is there an existing library to ensure some data store (JSON etc) is in sync with CRUD methods?
 # Open a github issue if you know something :)
@@ -39,7 +39,6 @@ class ChangeDetectionStore:
         self.json_store_path = "{}/url-watches.json".format(
             self.datastore_path)
         self.needs_write = False
-        self.proxy_list = None
         self.start_time = time.time()
         self.stop_thread = False
         # Base definition for all watchers
@@ -87,10 +86,11 @@ class ChangeDetectionStore:
                     print("Watching:", uuid,
                           self.__data['watching'][uuid]['url'])
 
-        # First time ran, doesnt exist.
-        except (FileNotFoundError, json.decoder.JSONDecodeError):
+        # First time ran, Create the datastore.
+        except (FileNotFoundError):
             if include_default_watches:
-                print("Creating JSON store at", self.datastore_path)
+                print("No JSON DB found at {}, creating JSON store at {}".format(
+                    self.json_store_path, self.datastore_path))
                 self.add_watch(url='https://news.ycombinator.com/',
                                tag='Tech news',
                                extras={'fetch_backend': 'html_requests'})
@@ -98,8 +98,10 @@ class ChangeDetectionStore:
                 self.add_watch(url='https://changedetection.io/CHANGELOG.txt',
                                tag='changedetection.io',
                                extras={'fetch_backend': 'html_requests'})
-
         self.__data['version_tag'] = version_tag
+
+        # Just to test that proxies.json if it exists, doesnt throw a parsing error on startup
+        test_list = self.proxy_list
 
         # Helper to remove password protection
         password_reset_lockfile = "{}/removepassword.lock".format(
@@ -125,11 +127,6 @@ class ChangeDetectionStore:
         if not 'api_access_token' in self.__data['settings']['application']:
             secret = secrets.token_hex(16)
             self.__data['settings']['application']['api_access_token'] = secret
-
-        # Proxy list support - available as a selection in settings when text file is imported
-        proxy_list_file = "{}/proxies.json".format(self.datastore_path)
-        if path.isfile(proxy_list_file):
-            self.import_proxy_list(proxy_list_file)
 
         # Bump the update version by running updates
         self.run_updates()
@@ -188,14 +185,6 @@ class ChangeDetectionStore:
 
     @property
     def data(self):
-        has_unviewed = False
-        for uuid, watch in self.__data['watching'].items():
-            # #106 - Be sure this is None on empty string, False, None, etc
-            # Default var for fetch_backend
-            # @todo this may not be needed anymore, or could be easily removed
-            if not self.__data['watching'][uuid]['fetch_backend']:
-                self.__data['watching'][uuid]['fetch_backend'] = self.__data['settings']['application']['fetch_backend']
-
         # Re #152, Return env base_url if not overriden, @todo also prefer the proxy pass url
         env_base_url = os.getenv('BASE_URL', '')
         if not self.__data['settings']['application']['base_url']:
@@ -218,27 +207,25 @@ class ChangeDetectionStore:
         tags.sort()
         return tags
 
-    def unlink_history_file(self, path):
-        try:
-            unlink(path)
-        except (FileNotFoundError, IOError):
-            pass
-
     # Delete a single watch by UUID
     def delete(self, uuid):
+        import pathlib
+        import shutil
+
         with self.lock:
             if uuid == 'all':
                 self.__data['watching'] = {}
 
                 # GitHub #30 also delete history records
                 for uuid in self.data['watching']:
-                    for path in self.data['watching'][uuid].history.values():
-                        self.unlink_history_file(path)
+                    path = pathlib.Path(os.path.join(
+                        self.datastore_path, uuid))
+                    shutil.rmtree(path)
+                    self.needs_write_urgent = True
 
             else:
-                for path in self.data['watching'][uuid].history.values():
-                    self.unlink_history_file(path)
-
+                path = pathlib.Path(os.path.join(self.datastore_path, uuid))
+                shutil.rmtree(path)
                 del self.data['watching'][uuid]
 
             self.needs_write_urgent = True
@@ -316,6 +303,7 @@ class ChangeDetectionStore:
                     'method',
                     'paused',
                     'previous_md5',
+                    'processor',
                     'subtractive_selectors',
                     'tag',
                     'text_should_not_be_present',
@@ -337,9 +325,12 @@ class ChangeDetectionStore:
                     "Error fetching metadata for shared watch link", url, str(e))
                 flash("Error fetching metadata for {}".format(url), 'error')
                 return False
+        from .model.Watch import is_safe_url
+        if not is_safe_url(url):
+            flash('Watch protocol is not permitted by SAFE_PROTOCOL_REGEX', 'error')
+            return None
 
         with self.lock:
-
             # #Re 569
             new_watch = Watch.model(datastore_path=self.datastore_path, default={
                 'url': url,
@@ -389,12 +380,6 @@ class ChangeDetectionStore:
         with open(target_path, 'wb') as f:
             f.write(screenshot)
             f.close()
-
-        # Make a JPEG that's used in notifications (due to being a smaller size) available
-        from PIL import Image
-        im1 = Image.open(target_path)
-        im1.convert('RGB').save(target_path.replace('.png', '.jpg'), quality=int(
-            os.getenv("NOTIFICATION_SCREENSHOT_JPG_QUALITY", 75)))
 
     def save_error_text(self, watch_uuid, contents):
         if not self.data['watching'].get(watch_uuid):
@@ -485,10 +470,28 @@ class ChangeDetectionStore:
                     print("Removing", item)
                     unlink(item)
 
-    def import_proxy_list(self, filename):
-        with open(filename) as f:
-            self.proxy_list = json.load(f)
-            print("Registered proxy list", list(self.proxy_list.keys()))
+    @property
+    def proxy_list(self):
+        proxy_list = {}
+        proxy_list_file = os.path.join(self.datastore_path, 'proxies.json')
+
+        # Load from external config file
+        if path.isfile(proxy_list_file):
+            with open("{}/proxies.json".format(self.datastore_path)) as f:
+                proxy_list = json.load(f)
+
+        # Mapping from UI config if available
+        extras = self.data['settings']['requests'].get('extra_proxies')
+        if extras:
+            i = 0
+            for proxy in extras:
+                i += 0
+                if proxy.get('proxy_name') and proxy.get('proxy_url'):
+                    k = "ui-" + str(i) + proxy.get('proxy_name')
+                    proxy_list[k] = {'label': proxy.get(
+                        'proxy_name'), 'url': proxy.get('proxy_url')}
+
+        return proxy_list if len(proxy_list) else None
 
     def get_preferred_proxy_for_watch(self, uuid):
         """
@@ -497,11 +500,10 @@ class ChangeDetectionStore:
         :return: proxy "key" id
         """
 
-        proxy_id = None
         if self.proxy_list is None:
             return None
 
-        # If its a valid one
+        # If it's a valid one
         watch = self.data['watching'].get(uuid)
 
         if watch.get('proxy') and watch.get('proxy') in list(self.proxy_list.keys()):
@@ -514,8 +516,8 @@ class ChangeDetectionStore:
             if self.proxy_list.get(system_proxy_id):
                 return system_proxy_id
 
-        # Fallback - Did not resolve anything, use the first available
-        if system_proxy_id is None:
+        # Fallback - Did not resolve anything, or doesnt exist, use the first available
+        if system_proxy_id is None or not self.proxy_list.get(system_proxy_id):
             first_default = list(self.proxy_list)[0]
             return first_default
 
@@ -696,4 +698,14 @@ class ChangeDetectionStore:
                 self.data['settings']['application']['notification_urls'][i] = re.sub(
                     r, r'{{\1}}', url)
 
+        return
+
+    # Some setups may have missed the correct default, so it shows the wrong config in the UI, although it will default to system-wide
+    def update_10(self):
+        for uuid, watch in self.data['watching'].items():
+            try:
+                if not watch.get('fetch_backend', ''):
+                    watch['fetch_backend'] = 'system'
+            except:
+                continue
         return

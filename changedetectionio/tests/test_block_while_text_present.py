@@ -8,10 +8,10 @@ from changedetectionio import html_tools
 def set_original_ignore_response():
     test_return_data = """<html>
        <body>
-     Some initial text</br>
+     Some initial text<br>
      <p>Which is across multiple lines</p>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      </body>
      </html>
 
@@ -24,10 +24,10 @@ def set_original_ignore_response():
 def set_modified_original_ignore_response():
     test_return_data = """<html>
        <body>
-     Some NEW nice initial text</br>
+     Some NEW nice initial text<br>
      <p>Which is across multiple lines</p>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      <p>new ignore stuff</p>
      <p>out of stock</p>
      <p>blah</p>
@@ -44,11 +44,11 @@ def set_modified_original_ignore_response():
 def set_modified_response_minus_block_text():
     test_return_data = """<html>
        <body>
-     Some NEW nice initial text</br>
+     Some NEW nice initial text<br>
      <p>Which is across multiple lines</p>
      <p>now on sale $2/p>
-     </br>
-     So let's see what happens.  </br>
+     <br>
+     So let's see what happens.  <br>
      <p>new ignore stuff</p>
      <p>blah</p>
      </body>
@@ -87,7 +87,10 @@ def test_check_block_changedetection_text_NOT_present(client, live_server):
     # Add our URL to the import page
     res = client.post(
         url_for("edit_page", uuid="first"),
-        data={"text_should_not_be_present": ignore_text, "url": test_url, 'fetch_backend': "html_requests"},
+        data={"text_should_not_be_present": ignore_text,
+              "url": test_url,
+              'fetch_backend': "html_requests"
+              },
         follow_redirects=True
     )
     assert b"Updated watch." in res.data
@@ -129,7 +132,6 @@ def test_check_block_changedetection_text_NOT_present(client, live_server):
     set_modified_response_minus_block_text()
     client.get(url_for("form_watch_checknow"), follow_redirects=True)
     time.sleep(sleep_time_for_fetch_thread)
-
     res = client.get(url_for("index"))
     assert b'unviewed' in res.data
 

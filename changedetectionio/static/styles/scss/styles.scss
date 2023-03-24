@@ -2,10 +2,11 @@
  * -- BASE STYLES --
  */
 
-@import 'parts/_variables';
-@import 'parts/_spinners';
-@import 'parts/_browser-steps';
 @import 'parts/_arrows';
+@import 'parts/_browser-steps';
+@import 'parts/_extra_proxies';
+@import 'parts/_spinners';
+@import 'parts/_variables';
 
 body {
 	color: var(--color-text);
@@ -20,6 +21,13 @@ body {
 	position: absolute;
 	white-space: nowrap;
 	width: 1px;
+}
+
+// Row icons like chrome, pdf, share, etc
+.status-icon {
+	display: inline-block;
+	height: 1rem;
+	vertical-align: middle;
 }
 
 .pure-table-even {
@@ -440,6 +448,10 @@ body:before {
 
 .button-small {
 	font-size: 85%;
+}
+
+.button-xsmall {
+	font-size: 70%;
 }
 
 .fetch-error {
@@ -1077,6 +1089,21 @@ body.full-width {
 			font-size: 0.875em;
 		}
 	}
+	.text-filtering {
+		h3 {
+			margin-top: 0;
+		}
+		border: 1px solid #ccc;
+		padding: 1rem;
+		border-radius: 5px;
+		margin-bottom: 1rem;
+		fieldset:last-of-type {
+			padding-bottom: 0;
+			.pure-control-group {
+				padding-bottom: 0;
+			}
+		}
+	}
 }
 
 ul {
@@ -1230,4 +1257,30 @@ ul {
 	display: inline-block;
 	height: 0.8rem;
 	vertical-align: middle;
+}
+
+#quick-watch-processor-type {
+	color: #fff;
+	ul {
+		padding: 0.3rem;
+
+		li {
+			list-style: none;
+			font-size: 0.8rem;
+		}
+	}
+}
+
+.restock-label {
+	&.in-stock {
+		background-color: var(--color-background-button-green);
+		color: #fff;
+	}
+	&.not-in-stock {
+		background-color: var(--color-background-button-cancel);
+		color: #777;
+	}
+	padding: 3px;
+	border-radius: 3px;
+	white-space: nowrap;
 }

@@ -4,8 +4,13 @@ from changedetectionio.notification import (
 from distutils.util import strtobool
 import logging
 import os
+import re
 import time
 import uuid
+
+# Allowable protocols, protects against javascript: etc
+# file:// is further checked by ALLOW_FILE_URI
+SAFE_PROTOCOL_REGEX = '^(http|https|ftp|file):'
 
 minimum_seconds_recheck_time = int(
     os.getenv('MINIMUM_SECONDS_RECHECK_TIME', 60))
@@ -13,65 +18,87 @@ mtable = {'seconds': 1, 'minutes': 60,
           'hours': 3600, 'days': 86400, 'weeks': 86400 * 7}
 
 
+base_config = {
+    'body': None,
+    # On change-detected, compare against all history if its something new
+    'check_unique_lines': False,
+    'check_count': 0,
+    # Every time the CSS/xPath filter cannot be located, reset when all is fine.
+    'consecutive_filter_failures': 0,
+    'extract_text': [],  # Extract text by regex after filters
+    'extract_title_as_title': False,
+    'fetch_backend': 'system',  # plaintext, playwright etc
+    'processor': 'text_json_diff',  # could be restock_diff or others from .processors
+    'filter_failure_notification_send': strtobool(os.getenv('FILTER_FAILURE_NOTIFICATION_SEND_DEFAULT', 'True')),
+    'filter_text_added': True,
+    'filter_text_replaced': True,
+    'filter_text_removed': True,
+    'has_ldjson_price_data': None,
+    'track_ldjson_price_data': None,
+    'headers': {},  # Extra headers to send
+    'ignore_text': [],  # List of text to ignore when calculating the comparison checksum
+    'in_stock_only': True,  # Only trigger change on going to instock from out-of-stock
+    'include_filters': [],
+    'last_checked': 0,
+    'last_error': False,
+    # history key value of the last viewed via the [diff] link
+    'last_viewed': 0,
+    'method': 'GET',
+    # Custom notification content
+    'notification_body': None,
+    'notification_format': default_notification_format_for_watch,
+    'notification_muted': False,
+    'notification_title': None,
+    # Include the latest screenshot if available and supported by the apprise URL
+    'notification_screenshot': False,
+    # List of URLs to add to the notification Queue (Usually AppRise)
+    'notification_urls': [],
+    'paused': False,
+    'previous_md5': False,
+    # Used for skipping changedetection entirely
+    'previous_md5_before_filters': False,
+    'proxy': None,  # Preferred proxy connection
+    'subtractive_selectors': [],
+    'tag': None,
+    'text_should_not_be_present': [],  # Text that should not present
+    # Re #110, so then if this is set to None, we know to use the default value instead
+    # Requires setting to None on submit if it's the same as the default
+    # Should be all None by default, so we use the system default in this case.
+    'time_between_check': {'weeks': None, 'days': None, 'hours': None, 'minutes': None, 'seconds': None},
+    'title': None,
+    'trigger_text': [],  # List of text or regex to wait for until a change is detected
+    'url': '',
+    'uuid': str(uuid.uuid4()),
+    'webdriver_delay': None,
+    'webdriver_js_execute_code': None,  # Run before change-detection
+}
+
+
+def is_safe_url(test_url):
+    # See https://github.com/dgtlmoon/changedetection.io/issues/1358
+
+    # Remove 'source:' prefix so we dont get 'source:javascript:' etc
+    # 'source:' is a valid way to tell us to return the source
+
+    r = re.compile(re.escape('source:'), re.IGNORECASE)
+    test_url = r.sub('', test_url)
+
+    pattern = re.compile(os.getenv('SAFE_PROTOCOL_REGEX',
+                         SAFE_PROTOCOL_REGEX), re.IGNORECASE)
+    if not pattern.match(test_url.strip()):
+        return False
+
+    return True
+
+
 class model(dict):
     __newest_history_key = None
     __history_n = 0
-    __base_config = {
-        # 'history': {},  # Dict of timestamp and output stripped filename (removed)
-        # 'newest_history_key': 0, (removed, taken from history.txt index)
-        'body': None,
-        # On change-detected, compare against all history if its something new
-        'check_unique_lines': False,
-        'check_count': 0,
-        # Every time the CSS/xPath filter cannot be located, reset when all is fine.
-        'consecutive_filter_failures': 0,
-        'extract_text': [],  # Extract text by regex after filters
-        'extract_title_as_title': False,
-        'fetch_backend': None,
-        'filter_failure_notification_send': strtobool(os.getenv('FILTER_FAILURE_NOTIFICATION_SEND_DEFAULT', 'True')),
-        'has_ldjson_price_data': None,
-        'track_ldjson_price_data': None,
-        'headers': {},  # Extra headers to send
-        'ignore_text': [],  # List of text to ignore when calculating the comparison checksum
-        'include_filters': [],
-        'last_checked': 0,
-        'last_error': False,
-        # history key value of the last viewed via the [diff] link
-        'last_viewed': 0,
-        'method': 'GET',
-        # Custom notification content
-        'notification_body': None,
-        'notification_format': default_notification_format_for_watch,
-        'notification_muted': False,
-        'notification_title': None,
-        # Include the latest screenshot if available and supported by the apprise URL
-        'notification_screenshot': False,
-        # List of URLs to add to the notification Queue (Usually AppRise)
-        'notification_urls': [],
-        'paused': False,
-        'previous_md5': False,
-        # Used for skipping changedetection entirely
-        'previous_md5_before_filters': False,
-        'proxy': None,  # Preferred proxy connection
-        'subtractive_selectors': [],
-        'tag': None,
-        'text_should_not_be_present': [],  # Text that should not present
-        # Re #110, so then if this is set to None, we know to use the default value instead
-        # Requires setting to None on submit if it's the same as the default
-        # Should be all None by default, so we use the system default in this case.
-        'time_between_check': {'weeks': None, 'days': None, 'hours': None, 'minutes': None, 'seconds': None},
-        'title': None,
-        'trigger_text': [],  # List of text or regex to wait for until a change is detected
-        'url': None,
-        'uuid': str(uuid.uuid4()),
-        'webdriver_delay': None,
-        'webdriver_js_execute_code': None,  # Run before change-detection
-    }
     jitter_seconds = 0
 
     def __init__(self, *arg, **kw):
 
-        self.update(self.__base_config)
+        self.update(base_config)
         self.__datastore_path = kw['datastore_path']
 
         self['uuid'] = str(uuid.uuid4())
@@ -102,7 +129,11 @@ class model(dict):
 
     @property
     def link(self):
+
         url = self.get('url', '')
+        if not is_safe_url(url):
+            return 'DISABLED'
+
         ready_url = url
         if '{%' in url or '{{' in url:
             from jinja2 import Environment
@@ -120,6 +151,26 @@ class model(dict):
                 return ''
 
         return ready_url
+
+    @property
+    def get_fetch_backend(self):
+        """
+        Like just using the `fetch_backend` key but there could be some logic
+        :return:
+        """
+        # Maybe also if is_image etc?
+        # This is because chrome/playwright wont render the PDF in the browser and we will just fetch it and use pdf2html to see the text.
+        if self.is_pdf:
+            return 'html_requests'
+
+        return self.get('fetch_backend')
+
+    @property
+    def is_pdf(self):
+        # content_type field is set in the future
+        # https://github.com/dgtlmoon/changedetection.io/issues/1392
+        # Not sure the best logic here
+        return self.get('url', '').lower().endswith('.pdf') or 'pdf' in self.get('content_type', '').lower()
 
     @property
     def label(self):
@@ -203,9 +254,32 @@ class model(dict):
         bump = self.history
         return self.__newest_history_key
 
+    def get_history_snapshot(self, timestamp):
+        import brotli
+        filepath = self.history[timestamp]
+
+        # See if a brotli versions exists and switch to that
+        if not filepath.endswith('.br') and os.path.isfile(f"{filepath}.br"):
+            filepath = f"{filepath}.br"
+
+        # OR in the backup case that the .br does not exist, but the plain one does
+        if filepath.endswith('.br') and not os.path.isfile(filepath):
+            if os.path.isfile(filepath.replace('.br', '')):
+                filepath = filepath.replace('.br', '')
+
+        if filepath.endswith('.br'):
+            # Brotli doesnt have a fileheader to detect it, so we rely on filename
+            # https://www.rfc-editor.org/rfc/rfc7932
+            with open(filepath, 'rb') as f:
+                return(brotli.decompress(f.read()).decode('utf-8'))
+
+        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+            return f.read()
+
     # Save some text file to the appropriate path and bump the history
     # result_obj from fetch_site_status.run()
-    def save_history_text(self, contents, timestamp):
+    def save_history_text(self, contents, timestamp, snapshot_id):
+        import brotli
 
         self.ensure_data_dir_exists()
 
@@ -214,13 +288,23 @@ class model(dict):
         if self.__newest_history_key and int(timestamp) == int(self.__newest_history_key):
             time.sleep(timestamp - self.__newest_history_key)
 
-        snapshot_fname = "{}.txt".format(str(uuid.uuid4()))
+        threshold = int(
+            os.getenv('SNAPSHOT_BROTLI_COMPRESSION_THRESHOLD', 1024))
+        skip_brotli = strtobool(
+            os.getenv('DISABLE_BROTLI_TEXT_SNAPSHOT', 'False'))
 
-        # in /diff/ and /preview/ we are going to assume for now that it's UTF-8 when reading
-        # most sites are utf-8 and some are even broken utf-8
-        with open(os.path.join(self.watch_data_dir, snapshot_fname), 'wb') as f:
-            f.write(contents)
-            f.close()
+        if not skip_brotli and len(contents) > threshold:
+            snapshot_fname = f"{snapshot_id}.txt.br"
+            dest = os.path.join(self.watch_data_dir, snapshot_fname)
+            if not os.path.exists(dest):
+                with open(dest, 'wb') as f:
+                    f.write(brotli.compress(contents, mode=brotli.MODE_TEXT))
+        else:
+            snapshot_fname = f"{snapshot_id}.txt"
+            dest = os.path.join(self.watch_data_dir, snapshot_fname)
+            if not os.path.exists(dest):
+                with open(dest, 'wb') as f:
+                    f.write(contents)
 
         # Append to index
         # @todo check last char was \n
@@ -258,8 +342,9 @@ class model(dict):
         # Compare each lines (set) against each history text file (set) looking for something new..
         existing_history = set({})
         for k, v in self.history.items():
-            alist = set([line.decode('utf-8').strip().lower()
-                        for line in open(v, 'rb')])
+            content = self.get_history_snapshot(k)
+            alist = set([line.strip().lower()
+                        for line in content.splitlines()])
             existing_history = existing_history.union(alist)
 
         # Check that everything in local_lines(new stuff) already exists in existing_history - it should
@@ -268,16 +353,6 @@ class model(dict):
 
     def get_screenshot(self):
         fname = os.path.join(self.watch_data_dir, "last-screenshot.png")
-        if os.path.isfile(fname):
-            return fname
-
-        # False is not an option for AppRise, must be type None
-        return None
-
-    def get_screenshot_as_jpeg(self):
-
-        # Created by save_screenshot()
-        fname = os.path.join(self.watch_data_dir, "last-screenshot.jpg")
         if os.path.isfile(fname):
             return fname
 
@@ -330,6 +405,24 @@ class model(dict):
             return fname
         return False
 
+    def pause(self):
+        self['paused'] = True
+
+    def unpause(self):
+        self['paused'] = False
+
+    def toggle_pause(self):
+        self['paused'] ^= True
+
+    def mute(self):
+        self['notification_muted'] = True
+
+    def unmute(self):
+        self['notification_muted'] = False
+
+    def toggle_mute(self):
+        self['notification_muted'] ^= True
+
     def extract_regex_from_all_history(self, regex):
         import csv
         import re
@@ -341,8 +434,8 @@ class model(dict):
         # self.history will be keyed with the full path
         for k, fname in self.history.items():
             if os.path.isfile(fname):
-                with open(fname, "r") as f:
-                    contents = f.read()
+                if True:
+                    contents = self.get_history_snapshot(k)
                     res = re.findall(regex, contents, re.MULTILINE)
                     if res:
                         if not csv_writer:
@@ -375,3 +468,42 @@ class model(dict):
             f.close()
 
         return csv_output_filename
+
+    @property
+    # Return list of tags, stripped and lowercase, used for searching
+    def all_tags(self):
+        return [s.strip().lower() for s in self.get('tag', '').split(',')]
+
+    def has_special_diff_filter_options_set(self):
+
+        # All False - nothing would be done, so act like it's not processable
+        if not self.get('filter_text_added', True) and not self.get('filter_text_replaced', True) and not self.get('filter_text_removed', True):
+            return False
+
+        # Or one is set
+        if not self.get('filter_text_added', True) or not self.get('filter_text_replaced', True) or not self.get('filter_text_removed', True):
+            return True
+
+        # None is set
+        return False
+
+    def get_last_fetched_before_filters(self):
+        import brotli
+        filepath = os.path.join(self.watch_data_dir, 'last-fetched.br')
+
+        if not os.path.isfile(filepath):
+            # If a previous attempt doesnt yet exist, just snarf the previous snapshot instead
+            dates = list(self.history.keys())
+            if len(dates):
+                return self.get_history_snapshot(dates[-1])
+            else:
+                return ''
+
+        with open(filepath, 'rb') as f:
+            return(brotli.decompress(f.read()).decode('utf-8'))
+
+    def save_last_fetched_before_filters(self, contents):
+        import brotli
+        filepath = os.path.join(self.watch_data_dir, 'last-fetched.br')
+        with open(filepath, 'wb') as f:
+            f.write(brotli.compress(contents, mode=brotli.MODE_TEXT))

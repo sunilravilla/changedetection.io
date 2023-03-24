@@ -73,16 +73,12 @@ def test_check_notification(client, live_server):
     # We write the PNG to disk, but a JPEG should appear in the notification
     # Write the last screenshot png
     testimage_png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
-    # This one is created when we save the screenshot from the webdriver/playwright session (converted from PNG)
-    testimage_jpg = '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q=='
 
 
     uuid = extract_UUID_from_client(client)
     datastore = 'test-datastore'
     with open(os.path.join(datastore, str(uuid), 'last-screenshot.png'), 'wb') as f:
         f.write(base64.b64decode(testimage_png))
-    with open(os.path.join(datastore, str(uuid), 'last-screenshot.jpg'), 'wb') as f:
-        f.write(base64.b64decode(testimage_jpg))
 
     # Goto the edit page, add our ignore text
     # Add our URL to the import page
@@ -100,6 +96,8 @@ def test_check_notification(client, live_server):
                                                    "Diff URL: {{diff_url}}\n"
                                                    "Snapshot: {{current_snapshot}}\n"
                                                    "Diff: {{diff}}\n"
+                                                   "Diff Added: {{diff_added}}\n"
+                                                   "Diff Removed: {{diff_removed}}\n"
                                                    "Diff Full: {{diff_full}}\n"
                                                    ":-)",
                               "notification_screenshot": True,
@@ -147,7 +145,7 @@ def test_check_notification(client, live_server):
     assert ':-)' in notification_submission
     assert "Diff Full: Some initial text" in notification_submission
     assert "Diff: (changed) Which is across multiple lines" in notification_submission
-    assert "(into   ) which has this one new line" in notification_submission
+    assert "(into) which has this one new line" in notification_submission
     # Re #342 - check for accidental python byte encoding of non-utf8/string
     assert "b'" not in notification_submission
     assert re.search('Watch UUID: [0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}', notification_submission, re.IGNORECASE)
@@ -160,12 +158,12 @@ def test_check_notification(client, live_server):
 
     # Check the attachment was added, and that it is a JPEG from the original PNG
     notification_submission_object = json.loads(notification_submission)
-    assert notification_submission_object['attachments'][0]['filename'] == 'last-screenshot.jpg'
+    # We keep PNG screenshots for now
+    assert notification_submission_object['attachments'][0]['filename'] == 'last-screenshot.png'
     assert len(notification_submission_object['attachments'][0]['base64'])
-    assert notification_submission_object['attachments'][0]['mimetype'] == 'image/jpeg'
+    assert notification_submission_object['attachments'][0]['mimetype'] == 'image/png'
     jpeg_in_attachment = base64.b64decode(notification_submission_object['attachments'][0]['base64'])
-    assert b'JFIF' in jpeg_in_attachment
-    assert testimage_png not in notification_submission
+
     # Assert that the JPEG is readable (didn't get chewed up somewhere)
     from PIL import Image
     import io
@@ -297,7 +295,10 @@ def test_notification_custom_endpoint_and_jinja2(client, live_server):
         follow_redirects=True
     )
     assert b'Settings updated' in res.data
-
+    client.get(
+        url_for("form_delete", uuid="all"),
+        follow_redirects=True
+    )
     # Add a watch and trigger a HTTP POST
     test_url = url_for('test_endpoint', _external=True)
     res = client.post(

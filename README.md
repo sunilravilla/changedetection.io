@@ -1,6 +1,8 @@
-## Web Site Change Detection, Monitoring and Notification.
+## Web Site Change Detection, Restock monitoring and notifications.
 
-_Live your data-life pro-actively, Detect website changes and perform meaningful actions, trigger notifications via Discord, Email, Slack, Telegram, API calls and many more._
+**_Detect website content changes and perform meaningful actions - trigger notifications via Discord, Email, Slack, Telegram, API calls and many more._**
+
+_Live your data-life pro-actively._ 
 
 
 [<img src="https://raw.githubusercontent.com/dgtlmoon/changedetection.io/master/docs/screenshot.png" style="max-width:100%;" alt="Self-hosted web page change monitoring"  title="Self-hosted web page change monitoring"  />](https://lemonade.changedetection.io/start?src=github)
@@ -9,7 +11,7 @@ _Live your data-life pro-actively, Detect website changes and perform meaningful
 
 ![changedetection.io](https://github.com/dgtlmoon/changedetection.io/actions/workflows/test-only.yml/badge.svg?branch=master)
 
-[**Don't have time? Let us host it for you! try our $6.99/month subscription - use our proxies and support!**](https://lemonade.changedetection.io/start) , _half the price of other website change monitoring services and comes with unlimited watches & checks!_
+[**Don't have time? Let us host it for you! try our $8.99/month subscription - use our proxies and support!**](https://lemonade.changedetection.io/start) , _half the price of other website change monitoring services and comes with unlimited watches & checks!_
 
 - Chrome browser included.
 - Super fast, no registration needed setup.
@@ -43,9 +45,11 @@ Requires Playwright to be enabled.
 
 - Products and services have a change in pricing
 - _Out of stock notification_ and _Back In stock notification_
+- Monitor and track PDF file changes, know when a PDF file has text changes.
 - Governmental department updates (changes are often only on their websites)
 - New software releases, security advisories when you're not on their mailing list.
 - Festivals with changes
+- Discogs restock alerts and monitoring
 - Realestate listing changes
 - Know when your favourite whiskey is on sale, or other special deals are announced before anyone else
 - COVID related news from government websites
@@ -60,6 +64,7 @@ Requires Playwright to be enabled.
 - You have a very sensitive list of URLs to watch and you do _not_ want to use the paid alternatives. (Remember, _you_ are the product)
 - Get notified when certain keywords appear in Twitter search results
 - Proactively search for jobs, get notified when companies update their careers page, search job portals for keywords.
+- Get alerts when new job positions are open on Bamboo HR and other job platforms
 
 _Need an actual Chrome runner with Javascript support? We support fetching via WebDriver and Playwright!</a>_
 
@@ -68,6 +73,7 @@ _Need an actual Chrome runner with Javascript support? We support fetching via W
 - Lots of trigger filters, such as "Trigger on text", "Remove text by selector", "Ignore text", "Extract text", also using regular-expressions!
 - Target elements with xPath and CSS Selectors, Easily monitor complex JSON with JSONPath or jq
 - Switch between fast non-JS and Chrome JS based "fetchers"
+- Track changes in PDF files (Monitor text changed in the PDF, Also monitor PDF filesize and checksums)
 - Easily specify how often a site should be checked
 - Execute JS before extracting text (Good for logging in, see examples in the UI!)
 - Override Request Headers, Specify `POST` or `GET` and other methods
@@ -95,6 +101,8 @@ $ docker run -d --restart always -p "127.0.0.1:5000:5000" -v datastore-volume:/d
 ```
 
 `:latest` tag is our latest stable release, `:dev` tag is our bleeding edge `master` branch.
+
+Alternative docker repository over at ghcr - [ghcr.io/dgtlmoon/changedetection.io](https://ghcr.io/dgtlmoon/changedetection.io)
 
 ### Windows
 
@@ -219,6 +227,9 @@ See the wiki https://github.com/dgtlmoon/changedetection.io/wiki/Proxy-configura
 
 Raspberry Pi and linux/arm/v6 linux/arm/v7 arm64 devices are supported! See the wiki for [details](https://github.com/dgtlmoon/changedetection.io/wiki/Fetching-pages-with-WebDriver)
 
+## API Support
+
+Supports managing the website watch list [via our API](https://changedetection.io/docs/api_v1/index.html)
 
 ## Support us
 
@@ -243,5 +254,5 @@ I offer commercial support, this software is depended on by network security, ae
 [test-shield]: https://github.com/dgtlmoon/changedetection.io/actions/workflows/test-only.yml/badge.svg?branch=master
 
 [license-shield]: https://img.shields.io/github/license/dgtlmoon/changedetection.io.svg?style=for-the-badge
-[release-link]: https://github.com/dgtlmoon.com/changedetection.io/releases
+[release-link]: https://github.com/dgtlmoon/changedetection.io/releases
 [docker-link]: https://hub.docker.com/r/dgtlmoon/changedetection.io

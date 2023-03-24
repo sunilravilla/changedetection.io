@@ -1,3 +1,5 @@
+# HTML to TEXT/JSON DIFFERENCE FETCHER
+
 import hashlib
 import json
 import logging
@@ -8,18 +10,26 @@ import urllib3
 from changedetectionio import content_fetcher, html_tools
 from changedetectionio.blueprint.price_data_follower import PRICE_DATA_TRACK_ACCEPT, PRICE_DATA_TRACK_REJECT
 from copy import deepcopy
+from . import difference_detection_processor
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
+name =  'Webpage Text/HTML, JSON and PDF changes'
+description = 'Detects all text changes where possible'
+
 class FilterNotFoundInResponse(ValueError):
+    def __init__(self, msg):
+        ValueError.__init__(self, msg)
+
+class PDFToHTMLToolNotFound(ValueError):
     def __init__(self, msg):
         ValueError.__init__(self, msg)
 
 
 # Some common stuff here that can be moved to a base class
 # (set_proxy_from_list)
-class perform_site_check():
+class perform_site_check(difference_detection_processor):
     screenshot = None
     xpath_data = None
 
@@ -49,7 +59,7 @@ class perform_site_check():
         watch = deepcopy(self.datastore.data['watching'].get(uuid))
 
         if not watch:
-            return
+            raise Exception("Watch no longer exists.")
 
         # Protect against file:// access
         if re.search(r'^file', watch.get('url', ''), re.IGNORECASE) and not os.getenv('ALLOW_FILE_URI', False):
@@ -87,7 +97,10 @@ class perform_site_check():
             is_source = True
 
         # Pluggable content fetcher
-        prefer_backend = watch.get('fetch_backend')
+        prefer_backend = watch.get_fetch_backend
+        if not prefer_backend or prefer_backend == 'system':
+            prefer_backend = self.datastore.data['settings']['application']['fetch_backend']
+
         if hasattr(content_fetcher, prefer_backend):
             klass = getattr(content_fetcher, prefer_backend)
         else:
@@ -117,11 +130,17 @@ class perform_site_check():
         if watch.get('webdriver_js_execute_code') is not None and watch.get('webdriver_js_execute_code').strip():
             fetcher.webdriver_js_execute_code = watch.get('webdriver_js_execute_code')
 
-        fetcher.run(url, timeout, request_headers, request_body, request_method, ignore_status_codes, watch.get('include_filters'))
+        # requests for PDF's, images etc should be passwd the is_binary flag
+        is_binary = watch.is_pdf
+
+        fetcher.run(url, timeout, request_headers, request_body, request_method, ignore_status_codes, watch.get('include_filters'), is_binary=is_binary)
         fetcher.quit()
 
         self.screenshot = fetcher.screenshot
         self.xpath_data = fetcher.xpath_data
+
+        # Track the content type
+        update_obj['content_type'] = fetcher.headers.get('Content-Type', '')
 
         # Watches added automatically in the queue manager will skip if its the same checksum as the previous run
         # Saves a lot of CPU
@@ -148,6 +167,31 @@ class perform_site_check():
         if is_source:
             is_html = False
             is_json = False
+
+        if watch.is_pdf or 'application/pdf' in fetcher.headers.get('Content-Type', '').lower():
+            from shutil import which
+            tool = os.getenv("PDF_TO_HTML_TOOL", "pdftohtml")
+            if not which(tool):
+                raise PDFToHTMLToolNotFound("Command-line `{}` tool was not found in system PATH, was it installed?".format(tool))
+
+            import subprocess
+            proc = subprocess.Popen(
+                [tool, '-stdout', '-', '-s', 'out.pdf', '-i'],
+                stdout=subprocess.PIPE,
+                stdin=subprocess.PIPE)
+            proc.stdin.write(fetcher.raw_content)
+            proc.stdin.close()
+            fetcher.content = proc.stdout.read().decode('utf-8')
+            proc.wait(timeout=60)
+
+            # Add a little metadata so we know if the file changes (like if an image changes, but the text is the same
+            # @todo may cause problems with non-UTF8?
+            metadata = "<p>Added by changedetection.io: Document checksum - {} Filesize - {} bytes</p>".format(
+                hashlib.md5(fetcher.raw_content).hexdigest().upper(),
+                len(fetcher.content))
+
+            fetcher.content = fetcher.content.replace('</body>', metadata + '</body>')
+
 
         include_filters_rule = deepcopy(watch.get('include_filters', []))
         # include_filters_rule = watch['include_filters']
@@ -235,6 +279,34 @@ class perform_site_check():
         # Re #340 - return the content before the 'ignore text' was applied
         text_content_before_ignored_filter = stripped_text_from_html.encode('utf-8')
 
+
+        # @todo whitespace coming from missing rtrim()?
+        # stripped_text_from_html could be based on their preferences, replace the processed text with only that which they want to know about.
+        # Rewrite's the processing text based on only what diff result they want to see
+        if watch.has_special_diff_filter_options_set() and len(watch.history.keys()):
+            # Now the content comes from the diff-parser and not the returned HTTP traffic, so could be some differences
+            from .. import diff
+            # needs to not include (added) etc or it may get used twice
+            # Replace the processed text with the preferred result
+            rendered_diff = diff.render_diff(previous_version_file_contents=watch.get_last_fetched_before_filters(),
+                                                       newest_version_file_contents=stripped_text_from_html,
+                                                       include_equal=False,  # not the same lines
+                                                       include_added=watch.get('filter_text_added', True),
+                                                       include_removed=watch.get('filter_text_removed', True),
+                                                       include_replaced=watch.get('filter_text_replaced', True),
+                                                       line_feed_sep="\n",
+                                                       include_change_type_prefix=False)
+
+            watch.save_last_fetched_before_filters(text_content_before_ignored_filter)
+
+            if not rendered_diff and stripped_text_from_html:
+                # We had some content, but no differences were found
+                # Store our new file as the MD5 so it will trigger in the future
+                c = hashlib.md5(text_content_before_ignored_filter.translate(None, b'\r\n\t ')).hexdigest()
+                return False, {'previous_md5': c}, stripped_text_from_html.encode('utf-8')
+            else:
+                stripped_text_from_html = rendered_diff
+
         # Treat pages with no renderable text content as a change? No by default
         empty_pages_are_a_change = self.datastore.data['settings']['application'].get('empty_pages_are_a_change', False)
         if not is_json and not empty_pages_are_a_change and len(stripped_text_from_html.strip()) == 0:
@@ -293,6 +365,7 @@ class perform_site_check():
             blocked = True
             # Filter and trigger works the same, so reuse it
             # It should return the line numbers that match
+            # Unblock flow if the trigger was found (some text remained after stripped what didnt match)
             result = html_tools.strip_ignore_text(content=str(stripped_text_from_html),
                                                   wordlist=trigger_text,
                                                   mode="line numbers")
