@@ -149,7 +149,7 @@ class ValidateContentFetcherIsReady(object):
         from changedetectionio import content_fetcher
 
         # Better would be a radiohandler that keeps a reference to each class
-        if field.data is not None:
+        if field.data is not None and field.data != 'system':
             klass = getattr(content_fetcher, field.data)
             some_object = klass()
             try:
@@ -255,12 +255,18 @@ class validateURL(object):
 
     def __call__(self, form, field):
         import validators
+
         try:
             validators.url(field.data.strip())
         except validators.ValidationFailure:
             message = field.gettext(
                 '\'%s\' is not a valid URL.' % (field.data.strip()))
             raise ValidationError(message)
+
+        from .model.Watch import is_safe_url
+        if not is_safe_url(field.data):
+            raise ValidationError(
+                'Watch protocol is not permitted by SAFE_PROTOCOL_REGEX')
 
 
 class ValidateListRegex(object):
@@ -374,10 +380,14 @@ class ValidateCSSJSONXPATHInput(object):
 
 
 class quickWatchForm(Form):
+    from . import processors
+
     url = fields.URLField('URL', validators=[validateURL()])
     tag = StringField('Group tag', [validators.Optional()])
     watch_submit_button = SubmitField(
         'Watch', render_kw={"class": "pure-button pure-button-primary"})
+    processor = RadioField(
+        u'Processor', choices=processors.available_processors(), default="text_json_diff")
     edit_and_watch_submit_button = SubmitField(
         'Edit > Watch', render_kw={"class": "pure-button pure-button-primary"})
 
@@ -398,6 +408,13 @@ class commonSettingsForm(Form):
         'Extract <title> from document and use as watch title', default=False)
     webdriver_delay = IntegerField('Wait seconds before extracting text', validators=[validators.Optional(), validators.NumberRange(min=1,
                                                                                                                                     message="Should contain one or more seconds")])
+
+
+class importForm(Form):
+    from . import processors
+    processor = RadioField(
+        u'Processor', choices=processors.available_processors(), default="text_json_diff")
+    urls = TextAreaField('URLs')
 
 
 class SingleBrowserStep(Form):
@@ -440,13 +457,22 @@ class watchForm(commonSettingsForm):
     ignore_status_codes = BooleanField(
         'Ignore status codes (process non-2xx status codes as normal)', default=False)
     check_unique_lines = BooleanField(
-        'Only trigger when new lines appear', default=False)
+        'Only trigger when unique lines appear', default=False)
+
+    filter_text_added = BooleanField('Added lines', default=True)
+    filter_text_replaced = BooleanField('Replaced/changed lines', default=True)
+    filter_text_removed = BooleanField('Removed lines', default=True)
+
+    # @todo this class could be moved to its own text_json_diff_watchForm and this goes to restock_diff_Watchform perhaps
+    in_stock_only = BooleanField(
+        'Only trigger when product goes BACK to in-stock', default=True)
+
     trigger_text = StringListField(
         'Trigger/wait for text', [validators.Optional(), ValidateListRegex()])
     if os.getenv("PLAYWRIGHT_DRIVER_URL"):
         browser_steps = FieldList(FormField(SingleBrowserStep), min_entries=10)
     text_should_not_be_present = StringListField(
-        'Block change-detection if text matches', [validators.Optional(), ValidateListRegex()])
+        'Block change-detection while text matches', [validators.Optional(), ValidateListRegex()])
     webdriver_js_execute_code = TextAreaField('Execute JavaScript before change detection', render_kw={
                                               "rows": "5"}, validators=[validators.Optional()])
 
@@ -486,36 +512,58 @@ class watchForm(commonSettingsForm):
         return result
 
 
+class SingleExtraProxy(Form):
+
+    # maybe better to set some <script>var..
+    proxy_name = StringField('Name', [validators.Optional()], render_kw={
+                             "placeholder": "Name"})
+    proxy_url = StringField('Proxy URL', [validators.Optional()], render_kw={
+                            "placeholder": "http://user:pass@...:3128", "size": 50})
+    # @todo do the validation here instead
+
 # datastore.data['settings']['requests']..
+
+
 class globalSettingsRequestForm(Form):
     time_between_check = FormField(TimeBetweenCheckForm)
     proxy = RadioField('Proxy')
     jitter_seconds = IntegerField('Random jitter seconds ± check',
                                   render_kw={"style": "width: 5em;"},
                                   validators=[validators.NumberRange(min=0, message="Should contain zero or more seconds")])
+    extra_proxies = FieldList(FormField(SingleExtraProxy), min_entries=5)
+
+    def validate_extra_proxies(self, extra_validators=None):
+        for e in self.data['extra_proxies']:
+            if e.get('proxy_name') or e.get('proxy_url'):
+                if not e.get('proxy_name', '').strip() or not e.get('proxy_url', '').strip():
+                    self.extra_proxies.errors.append(
+                        'Both a name, and a Proxy URL is required.')
+                    return False
+
 
 # datastore.data['settings']['application']..
 
 
 class globalSettingsApplicationForm(commonSettingsForm):
 
-    base_url = StringField('Base URL', validators=[validators.Optional()])
-    global_subtractive_selectors = StringListField(
-        'Remove elements', [ValidateCSSJSONXPATHInput(allow_xpath=False, allow_json=False)])
-    global_ignore_text = StringListField('Ignore Text', [ValidateListRegex()])
-    ignore_whitespace = BooleanField('Ignore whitespace')
-    removepassword_button = SubmitField('Remove password', render_kw={
-                                        "class": "pure-button pure-button-primary"})
-    empty_pages_are_a_change = BooleanField(
-        'Treat empty pages as a change?', default=False)
-    render_anchor_tag_content = BooleanField(
-        'Render anchor tag content', default=False)
-    fetch_backend = RadioField('Fetch Method', default="html_requests", choices=content_fetcher.available_fetchers(
-    ), validators=[ValidateContentFetcherIsReady()])
     api_access_token_enabled = BooleanField(
         'API access token security check enabled', default=True, validators=[validators.Optional()])
+    base_url = StringField('Base URL', validators=[validators.Optional()])
+    empty_pages_are_a_change = BooleanField(
+        'Treat empty pages as a change?', default=False)
+    fetch_backend = RadioField('Fetch Method', default="html_requests", choices=content_fetcher.available_fetchers(
+    ), validators=[ValidateContentFetcherIsReady()])
+    global_ignore_text = StringListField('Ignore Text', [ValidateListRegex()])
+    global_subtractive_selectors = StringListField(
+        'Remove elements', [ValidateCSSJSONXPATHInput(allow_xpath=False, allow_json=False)])
+    ignore_whitespace = BooleanField('Ignore whitespace')
     password = SaltyPasswordField()
-
+    removepassword_button = SubmitField('Remove password', render_kw={
+                                        "class": "pure-button pure-button-primary"})
+    render_anchor_tag_content = BooleanField(
+        'Render anchor tag content', default=False)
+    shared_diff_access = BooleanField(
+        'Allow access to view diff page when password is enabled', default=False, validators=[validators.Optional()])
     filter_failure_notification_threshold_attempts = IntegerField('Number of times the filter can be missing before sending a notification',
                                                                   render_kw={
                                                                       "style": "width: 5em;"},

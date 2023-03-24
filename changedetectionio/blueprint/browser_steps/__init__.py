@@ -23,11 +23,10 @@
 
 from distutils.util import strtobool
 from flask import Blueprint, request, make_response
-from flask_login import login_required
 import os
 import logging
 from changedetectionio.store import ChangeDetectionStore
-
+from changedetectionio import login_optionally_required
 browsersteps_live_ui_o = {}
 browsersteps_playwright_browser_interface = None
 browsersteps_playwright_browser_interface_browser = None
@@ -65,7 +64,7 @@ def construct_blueprint(datastore: ChangeDetectionStore):
 
     browser_steps_blueprint = Blueprint('browser_steps', __name__, template_folder="templates")
 
-    @login_required
+    @login_optionally_required
     @browser_steps_blueprint.route("/browsersteps_update", methods=['GET', 'POST'])
     def browsersteps_ui_update():
         import base64
@@ -107,8 +106,8 @@ def construct_blueprint(datastore: ChangeDetectionStore):
 
             if step_operation == 'Goto site':
                 step_operation = 'goto_url'
-                step_optional_value = None
-                step_selector = datastore.data['watching'][uuid].get('url')
+                step_optional_value = datastore.data['watching'][uuid].get('url')
+                step_selector = None
 
             # @todo try.. accept.. nice errors not popups..
             try:

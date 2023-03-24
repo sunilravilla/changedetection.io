@@ -76,8 +76,12 @@
     </div>
 
      <div class="tab-pane-inner" id="text">
-         <div class="tip">Pro-tip: Use <strong>show current snapshot</strong> tab to visualise what will be ignored.
-         </div>
+         <div class="tip">Pro-tip: Use <strong>show current snapshot</strong> tab to visualise what will be ignored.</div>
+
+         {% if password_enabled_and_share_is_off %}
+           <div class="tip">Pro-tip: You can enable <strong>"share access when password is enabled"</strong> from settings</div>
+         {% endif %}
+
          <div class="snapshot-age">{{watch_a.snapshot_text_ctime|format_timestamp_timeago}}</div>
 
          <table>
@@ -120,12 +124,12 @@
             <div class="pure-control-group">
                 {{ render_field(extract_form.extract_regex) }}
                 <span class="pure-form-message-inline">
-                    A <strong>RegEx</strong> is a pattern that identifies exactly which part inside of the text that you want to extract.<br/>
+                    A <strong>RegEx</strong> is a pattern that identifies exactly which part inside of the text that you want to extract.<br>
 
                     <p>
-                        For example, to extract only the numbers from text &dash;</br>
-                        <strong>Raw text</strong>: <code>Temperature <span style="color: red">5.5</span>°C in Sydney</code></br>
-                        <strong>RegEx to extract:</strong> <code>Temperature <span style="color: red">([0-9\.]+)</span></code><br/>
+                        For example, to extract only the numbers from text &dash;<br>
+                        <strong>Raw text</strong>: <code>Temperature <span style="color: red">5.5</span>°C in Sydney</code><br>
+                        <strong>RegEx to extract:</strong> <code>Temperature <span style="color: red">([0-9\.]+)</span></code><br>
                     </p>
                     <p>
                         <a href="https://RegExr.com/">Be sure to test your RegEx here.</a>

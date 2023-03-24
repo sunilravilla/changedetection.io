@@ -3,7 +3,7 @@
 import time
 from flask import url_for
 from urllib.request import urlopen
-from .util import set_original_response, set_modified_response, live_server_setup, wait_for_all_checks
+from .util import set_original_response, set_modified_response, live_server_setup, wait_for_all_checks, extract_rss_token_from_UI
 
 sleep_time_for_fetch_thread = 3
 
@@ -11,7 +11,7 @@ sleep_time_for_fetch_thread = 3
 # Basic test to check inscriptus is not adding return line chars, basically works etc
 def test_inscriptus():
     from inscriptis import get_text
-    html_content = "<html><body>test!<br/>ok man</body></html>"
+    html_content = "<html><body>test!<br>ok man</body></html>"
     stripped_text_from_html = get_text(html_content)
     assert stripped_text_from_html == 'test!\nok man'
 
@@ -67,7 +67,7 @@ def test_check_basic_change_detection_functionality(client, live_server):
 
     # Force recheck
     res = client.get(url_for("form_watch_checknow"), follow_redirects=True)
-    assert b'1 watches are queued for rechecking.' in res.data
+    assert b'1 watches queued for rechecking.' in res.data
 
     wait_for_all_checks(client)
 
@@ -76,12 +76,13 @@ def test_check_basic_change_detection_functionality(client, live_server):
     assert b'unviewed' in res.data
 
     # #75, and it should be in the RSS feed
-    res = client.get(url_for("rss"))
+    rss_token = extract_rss_token_from_UI(client)
+    res = client.get(url_for("rss", token=rss_token, _external=True))
     expected_url = url_for('test_endpoint', _external=True)
     assert b'<rss' in res.data
 
     # re #16 should have the diff in here too
-    assert b'(into   ) which has this one new line' in res.data
+    assert b'(into) which has this one new line' in res.data
     assert b'CDATA' in res.data
 
     assert expected_url.encode('utf-8') in res.data
