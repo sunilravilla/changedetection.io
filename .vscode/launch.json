@@ -18,7 +18,7 @@
 			"request": "launch",
 			"module": "flask",
 			"env": {
-				"FLASK_APP": "chnagedetection.py",
+				"FLASK_APP": "changedetection.py",
 				"FLASK_DEBUG": "1"
 			},
 			"args": ["run", "--no-debugger", "--no-reload"],

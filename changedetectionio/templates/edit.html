@@ -56,8 +56,8 @@
                 <fieldset>
                     <div class="pure-control-group">
                         {{ render_field(form.url, placeholder="https://...", required=true, class="m-d") }}
-                        <span class="pure-form-message-inline">Some sites use JavaScript to create the content, for this you should <a href="https://github.com/dgtlmoon/changedetection.io/wiki/Fetching-pages-with-WebDriver">use the Chrome/WebDriver Fetcher</a></span><br>
-                        <span class="pure-form-message-inline">You can use variables in the URL, perfect for inserting the current date and other logic, <a href="https://github.com/dgtlmoon/changedetection.io/wiki/Handling-variables-in-the-watched-URL">help and examples here</a></span><br>
+                        <span class="pure-form-message-inline">Some sites use JavaScript to create the content, for this you should <a href="/">use the Chrome/WebDriver Fetcher</a></span><br>
+                        <span class="pure-form-message-inline">You can use variables in the URL, perfect for inserting the current date and other logic, <a href="/">help and examples here</a></span><br>
                         <span class="pure-form-message-inline">
                         {% if watch['processor'] == 'text_json_diff' %}
                             Current mode: <strong>Webpage Text/HTML, JSON and PDF changes.</strong><br>
@@ -277,7 +277,7 @@ xpath://body/div/span[contains(@class, 'example-class')]",
                             </li>
                     </ul>
                     Please be sure that you thoroughly understand how to write CSS, JSONPath, XPath{% if jq_support %}, or jq selector{%endif%} rules before filing an issue on GitHub! <a
-                                href="https://github.com/dgtlmoon/changedetection.io/wiki/CSS-Selector-help">here for more CSS selector help</a>.<br>
+                                href="/">here for more CSS selector help</a>.<br>
                 </span>
                     </div>
                 <fieldset class="pure-control-group">

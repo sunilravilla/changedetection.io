@@ -15,7 +15,7 @@ class DailyOverview:
     def __init__(self, datastore_path):
         self.email = os.environ.get('EMAIL') or 'aimlops@ramco.com'
         self.password = os.environ.get('EMAIL_PASSWORD') or 'kJ@Rv34*xV3'
-        self.recipient = os.environ.get('RECIPIENTS') or '14607@ramco.com'
+        self.recipient = os.environ.get('RECIPIENTS') or '14607@ramco.com,PB.UPDATE@ramco.com'
         self.developer = os.environ.get('DEVELOPER_MAIL') or '14607@ramco.com'
         self.triggerTime = os.environ.get('TRIGGERTIME') or '08:00'
         self.yag = yagmail.SMTP(self.email, self.password, host='smtp.office365.com',
@@ -76,13 +76,15 @@ class DailyOverview:
 
     def SendEmail(self):
         self.GetHtml()
+        subject = 'RaiSE Daily Overview' + \
+            str(datetime.now().strftime('%Y-%m-%d'))
         try:
-            sent = self.yag.send(self.recipient, self.subject,
+            sent = self.yag.send(self.recipient, subject,
                                  contents=self.body+self.html)
             print('Email sent')
 
         except Exception as e:
-            self.yag.send(self.developer, self.subject,
+            self.yag.send(self.developer, subject,
                           contents='RaiSE Error in sending Overview email'+str(e))
         # after sending email, clear self.changes
 

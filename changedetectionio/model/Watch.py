@@ -50,7 +50,7 @@ base_config = {
     'notification_muted': False,
     'notification_title': None,
     # Include the latest screenshot if available and supported by the apprise URL
-    'notification_screenshot': False,
+    'notification_screenshot': True,
     # List of URLs to add to the notification Queue (Usually AppRise)
     'notification_urls': [],
     'paused': False,
@@ -69,7 +69,7 @@ base_config = {
     'trigger_text': [],  # List of text or regex to wait for until a change is detected
     'url': '',
     'uuid': str(uuid.uuid4()),
-    'webdriver_delay': None,
+    'webdriver_delay': 60,
     'webdriver_js_execute_code': None,  # Run before change-detection
 }
 
@@ -309,7 +309,7 @@ class model(dict):
         # Append to index
         # @todo check last char was \n
         index_fname = os.path.join(self.watch_data_dir, "history.txt")
-        with open(index_fname, 'a', encoding='utf-8', errors='ignore') as f:
+        with open(index_fname, 'a',  errors='ignore') as f:
             f.write("{},{}\n".format(timestamp, snapshot_fname))
             f.close()
 
