@@ -1,20 +1,19 @@
 {% extends 'base.html' %}
 {% block content %}
 {% from '_helpers.jinja' import render_simple_field, render_field %}
-{% from '_pagination.jinja' import pagination %}
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='jquery-3.6.0.min.js')}}"></script>
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='watch-overview.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='jquery-3.6.0.min.js')}}"></script>
+<script src="{{url_for('static_content', group='js', filename='watch-overview.js')}}" defer></script>
 
 <div class="box">
 
     <form class="pure-form" action="{{ url_for('form_quick_watch_add') }}" method="POST" id="new-watch-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" >
         <fieldset>
             <legend>Add a new change detection watch</legend>
             <div id="watch-add-wrapper-zone">
                 <div>
                     {{ render_simple_field(form.url, placeholder="https://...", required=true) }}
-                    {{ render_simple_field(form.tag, value=active_tag if active_tag else '', placeholder="watch label / tag") }}
+                    {{ render_simple_field(form.tags, value=tags[active_tag].title if active_tag else '', placeholder="watch label / tag") }}
                 </div>
                 <div>
                     {{ render_simple_field(form.watch_submit_button, title="Watch this URL!" ) }}
@@ -30,37 +29,46 @@
     </form>
 
     <form class="pure-form" action="{{ url_for('form_watch_list_checkbox_operations') }}" method="POST" id="watch-list-form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" >
+    <input type="hidden" id="op_extradata" name="op_extradata" value="" >
     <div id="checkbox-operations">
         <button class="pure-button button-secondary button-xsmall"  name="op" value="pause">Pause</button>
         <button class="pure-button button-secondary button-xsmall"  name="op" value="unpause">UnPause</button>
         <button class="pure-button button-secondary button-xsmall"  name="op" value="mute">Mute</button>
         <button class="pure-button button-secondary button-xsmall"  name="op" value="unmute">UnMute</button>
         <button class="pure-button button-secondary button-xsmall" name="op" value="recheck">Recheck</button>
+        <button class="pure-button button-secondary button-xsmall" name="op" value="assign-tag" id="checkbox-assign-tag">Tag</button>
+        <button class="pure-button button-secondary button-xsmall" name="op" value="mark-viewed">Mark viewed</button>
         <button class="pure-button button-secondary button-xsmall" name="op" value="notification-default">Use default notification</button>
-        <button class="pure-button button-secondary button-xsmall" style="background: #dd4242; font-size: 70%" name="op" value="delete">Delete</button>
+        <button class="pure-button button-secondary button-xsmall" style="background: #dd4242;" name="op" value="clear-history">Clear/reset history</button>
+        <button class="pure-button button-secondary button-xsmall" style="background: #dd4242;" name="op" value="delete">Delete</button>
     </div>
+    {% if watches|length >= pagination.per_page %}
+        {{ pagination.info }}
+    {% endif %}
+    {% if search_q %}<div id="search-result-info">Searching "<strong><i>{{search_q}}</i></strong>"</div>{% endif %}
     <div>
         <a href="{{url_for('index')}}" class="pure-button button-tag {{'active' if not active_tag }}">All</a>
-        {% for tag in tags %}
+        {% for uuid, tag in tags.items() %}
             {% if tag != "" %}
-                <a href="{{url_for('index', tag=tag) }}" class="pure-button button-tag {{'active' if active_tag == tag }}">{{ tag }}</a>
+                <a href="{{url_for('index', tag=uuid) }}" class="pure-button button-tag {{'active' if active_tag == uuid }}">{{ tag.title }}</a>
             {% endif %}
         {% endfor %}
     </div>
 
-    {% set sort_order = request.args.get('order', 'asc') == 'asc' %}
-    {% set sort_attribute = request.args.get('sort', 'last_changed')   %}
+    {% set sort_order = sort_order or 'asc' %}
+    {% set sort_attribute = sort_attribute or 'last_changed'  %}
     {% set pagination_page = request.args.get('page', 0) %}
 
     <div id="watch-table-wrapper">
+
         <table class="pure-table pure-table-striped watch-table">
             <thead>
             <tr>
-                <th><input style="vertical-align: middle" type="checkbox" id="check-all"/> #</th>
-                <th></th>
-                {% set link_order = "desc" if sort_order else "asc" %}
+                {% set link_order = "desc" if sort_order  == 'asc' else "asc" %}
                 {% set arrow_span = "" %}
+                <th><input style="vertical-align: middle" type="checkbox" id="check-all" > <a class="{{ 'active '+link_order if sort_attribute == 'date_created' else 'inactive' }}"  href="{{url_for('index', sort='date_created', order=link_order, tag=active_tag)}}"># <span class='arrow {{link_order}}'></span></a></th>
+                <th></th>
                 <th><a class="{{ 'active '+link_order if sort_attribute == 'label' else 'inactive' }}" href="{{url_for('index', sort='label', order=link_order, tag=active_tag)}}">Website <span class='arrow {{link_order}}'></span></a></th>
                 <th><a class="{{ 'active '+link_order if sort_attribute == 'last_checked' else 'inactive' }}" href="{{url_for('index', sort='last_checked', order=link_order, tag=active_tag)}}">Last Checked <span class='arrow {{link_order}}'></span></a></th>
                 <th><a class="{{ 'active '+link_order if sort_attribute == 'last_changed' else 'inactive' }}" href="{{url_for('index', sort='last_changed', order=link_order, tag=active_tag)}}">Last Changed <span class='arrow {{link_order}}'></span></a></th>
@@ -68,13 +76,12 @@
             </tr>
             </thead>
             <tbody>
-
-            {% set sorted_watches = watches|sort(attribute=sort_attribute, reverse=sort_order) %}
-            {% for watch in sorted_watches %}
-
-            {# WIP for pagination, disabled for now
-              {% if not ( loop.index >= 3 and loop.index <=4) %}{% continue %}{% endif %} -->
-             #}
+            {% if not watches|length %}
+            <tr>
+                <td colspan="6">No website watches configured, please add a URL in the box above, or <a href="{{ url_for('import_page')}}" >import a list</a>.</td>
+            </tr>
+            {% endif %}
+            {% for watch in (watches|sort(attribute=sort_attribute, reverse=sort_order == 'asc'))|pagination_slice(skip=pagination.skip) %}
             <tr id="{{ watch.uuid }}"
                 class="{{ loop.cycle('pure-table-odd', 'pure-table-even') }} processor-{{ watch['processor'] }}
                 {% if watch.last_error is defined and watch.last_error != False %}error{% endif %}
@@ -82,26 +89,26 @@
                 {% if watch.paused is defined and watch.paused != False %}paused{% endif %}
                 {% if watch.newest_history_key| int > watch.last_viewed and watch.history_n>=2 %}unviewed{% endif %}
                 {% if watch.uuid in queued_uuids %}queued{% endif %}">
-                <td class="inline checkbox-uuid" ><input name="uuids"  type="checkbox" value="{{ watch.uuid}} "/> <span>{{ loop.index }}</span></td>
+                <td class="inline checkbox-uuid" ><input name="uuids"  type="checkbox" value="{{ watch.uuid}} " > <span>{{ loop.index+pagination.skip }}</span></td>
                 <td class="inline watch-controls">
                     {% if not watch.paused %}
-                    <a class="state-off" href="{{url_for('index', op='pause', uuid=watch.uuid, tag=active_tag)}}"><img src="{{url_for('static_content', group='images', filename='pause.svg')}}" alt="Pause checks" title="Pause checks" class="icon icon-pause"/></a>
+                    <a class="state-off" href="{{url_for('index', op='pause', uuid=watch.uuid, tag=active_tag)}}"><img src="{{url_for('static_content', group='images', filename='pause.svg')}}" alt="Pause checks" title="Pause checks" class="icon icon-pause" ></a>
                     {% else %}
-                    <a class="state-on" href="{{url_for('index', op='pause', uuid=watch.uuid, tag=active_tag)}}"><img src="{{url_for('static_content', group='images', filename='play.svg')}}" alt="UnPause checks" title="UnPause checks" class="icon icon-unpause"/></a>
+                    <a class="state-on" href="{{url_for('index', op='pause', uuid=watch.uuid, tag=active_tag)}}"><img src="{{url_for('static_content', group='images', filename='play.svg')}}" alt="UnPause checks" title="UnPause checks" class="icon icon-unpause" ></a>
                     {% endif %}
-                    <a class="link-mute state-{{'on' if watch.notification_muted else 'off'}}" href="{{url_for('index', op='mute', uuid=watch.uuid, tag=active_tag)}}"><img src="{{url_for('static_content', group='images', filename='bell-off.svg')}}" alt="Mute notifications" title="Mute notifications" class="icon icon-mute"/></a>
+                    <a class="link-mute state-{{'on' if watch.notification_muted else 'off'}}" href="{{url_for('index', op='mute', uuid=watch.uuid, tag=active_tag)}}"><img src="{{url_for('static_content', group='images', filename='bell-off.svg')}}" alt="Mute notifications" title="Mute notifications" class="icon icon-mute" ></a>
                 </td>
                 <td class="title-col inline">{{watch.title if watch.title is not none and watch.title|length > 0 else watch.url}}
                     <a class="external" target="_blank" rel="noopener" href="{{ watch.link.replace('source:','') }}"></a>
-                    <a class="link-spread" href="{{url_for('form_share_put_watch', uuid=watch.uuid)}}"><img class="status-icon"  src="{{url_for('static_content', group='images', filename='spread.svg')}}" class="status-icon icon icon-spread" title="Create a link to share watch config with others" /></a>
+                    <a class="link-spread" href="{{url_for('form_share_put_watch', uuid=watch.uuid)}}"><img src="{{url_for('static_content', group='images', filename='spread.svg')}}" class="status-icon icon icon-spread" title="Create a link to share watch config with others" ></a>
 
                     {% if watch.get_fetch_backend == "html_webdriver"
                          or (  watch.get_fetch_backend == "system" and system_default_fetcher == 'html_webdriver'  )
                     %}
-                    <img class="status-icon" src="{{url_for('static_content', group='images', filename='Google-Chrome-icon.png')}}" title="Using a chrome browser" />
+                    <img class="status-icon" src="{{url_for('static_content', group='images', filename='Google-Chrome-icon.png')}}" title="Using a chrome browser" >
                     {% endif %}
 
-                    {%if watch.is_pdf  %}<img class="status-icon" src="{{url_for('static_content', group='images', filename='pdf-icon.svg')}}" title="Converting PDF to text" />{% endif %}
+                    {%if watch.is_pdf  %}<img class="status-icon" src="{{url_for('static_content', group='images', filename='pdf-icon.svg')}}" title="Converting PDF to text" >{% endif %}
                     {% if watch.last_error is defined and watch.last_error != False %}
                     <div class="fetch-error">{{ watch.last_error }}
 
@@ -123,7 +130,7 @@
                         <div class="ldjson-price-track-offer">Embedded price data detected, follow only price data? <a href="{{url_for('price_data_follower.accept', uuid=watch.uuid)}}" class="pure-button button-xsmall">Yes</a> <a href="{{url_for('price_data_follower.reject', uuid=watch.uuid)}}" class="">No</a></div>
                         {% endif %}
                         {% if watch['track_ldjson_price_data'] == 'accepted' %}
-                        <span class="tracking-ldjson-price-data" title="Automatically following embedded price information"><img src="{{url_for('static_content', group='images', filename='price-tag-icon.svg')}}"  class="status-icon price-follow-tag-icon"/> Price</span>
+                        <span class="tracking-ldjson-price-data" title="Automatically following embedded price information"><img src="{{url_for('static_content', group='images', filename='price-tag-icon.svg')}}"  class="status-icon price-follow-tag-icon" > Price</span>
                         {% endif %}
                     {% endif %}
 
@@ -135,11 +142,14 @@
                         {% else %}
                             Not yet checked
                         {% endif %}
+                    </span>
                     {% endif %}
 
-                    {% if not active_tag %}
-                    <span class="watch-tag-list">{{ watch.tag}}</span>
-                    {% endif %}
+
+                    {% for watch_tag_uuid, watch_tag in datastore.get_all_tags_for_watch(watch['uuid']).items() %}
+                      <span class="watch-tag-list">{{ watch_tag.title }}</span>
+                    {% endfor %}
+
                 </td>
                 <td class="last-checked">{{watch|format_last_checked_time|safe}}</td>
                 <td class="last-changed">{% if watch.history_n >=2 and watch.last_changed >0 %}
@@ -172,16 +182,13 @@
             {% endif %}
             <li>
                <a href="{{ url_for('form_watch_checknow', tag=active_tag) }}" class="pure-button button-tag ">Recheck
-                all {% if active_tag%}in "{{active_tag}}"{%endif%}</a>
+                all {% if active_tag%} in "{{tags[active_tag].title}}"{%endif%}</a>
             </li>
             <li>
                 <a href="{{ url_for('rss', tag=active_tag , token=app_rss_token)}}"><img alt="RSS Feed" id="feed-icon" src="{{url_for('static_content', group='images', filename='Generic_Feed-icon.svg')}}" height="15"></a>
             </li>
         </ul>
-        {# WIP for pagination, disabled for now
-         {{ pagination(sorted_watches,3, pagination_page) }}
-         #}
-
+        {{ pagination.links }}
     </div>
     </form>
 </div>

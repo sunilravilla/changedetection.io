@@ -89,9 +89,15 @@ def process_notification(n_object, datastore):
     n_body = jinja2_env.from_string(n_object.get('notification_body', default_notification_body)).render(**notification_parameters)
     n_title = jinja2_env.from_string(n_object.get('notification_title', default_notification_title)).render(**notification_parameters)
     n_format = valid_notification_formats.get(
-        n_object['notification_format'],
+        n_object.get('notification_format', default_notification_format),
         valid_notification_formats[default_notification_format],
     )
+
+    # If we arrived with 'System default' then look it up
+    if n_format == default_notification_format_for_watch and datastore.data['settings']['application'].get('notification_format') != default_notification_format_for_watch:
+        # Initially text or whatever
+        n_format = datastore.data['settings']['application'].get('notification_format', valid_notification_formats[default_notification_format])
+
     
     # https://github.com/caronc/apprise/wiki/Development_LogCapture
     # Anything higher than or equal to WARNING (which covers things like Connection errors)
@@ -145,9 +151,12 @@ def process_notification(n_object, datastore):
                     # Apprise will default to HTML, so we need to override it
                     # So that whats' generated in n_body is in line with what is going to be sent.
                     # https://github.com/caronc/apprise/issues/633#issuecomment-1191449321
-                    if not 'format=' in url and (n_format == 'text' or n_format == 'markdown'):
+                    if not 'format=' in url and (n_format == 'Text' or n_format == 'Markdown'):
                         prefix = '?' if not '?' in url else '&'
+                        # Apprise format is lowercase text https://github.com/caronc/apprise/issues/633
+                        n_format = n_format.tolower()
                         url = "{}{}format={}".format(url, prefix, n_format)
+                    # If n_format == HTML, then apprise email should default to text/html and we should be sending HTML only
 
                 apobj.add(url)
 
@@ -186,8 +195,13 @@ def create_notification_parameters(n_object, datastore):
     uuid = n_object['uuid'] if 'uuid' in n_object else ''
 
     if uuid != '':
-        watch_title = datastore.data['watching'][uuid]['title']
-        watch_tag = datastore.data['watching'][uuid]['tag']
+        watch_title = datastore.data['watching'][uuid].get('title', '')
+        tag_list = []
+        tags = datastore.get_all_tags_for_watch(uuid)
+        if tags:
+            for tag_uuid, tag in tags.items():
+                tag_list.append(tag.get('title'))
+        watch_tag = ', '.join(tag_list)
     else:
         watch_title = 'Change Detection'
         watch_tag = ''

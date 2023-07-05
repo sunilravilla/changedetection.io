@@ -3,7 +3,8 @@ import os
 import time
 import re
 from flask import url_for
-from . util import set_original_response, set_modified_response, set_more_modified_response, live_server_setup
+from .util import set_original_response, set_modified_response, set_more_modified_response, live_server_setup, wait_for_all_checks, \
+    set_longer_modified_response
 from . util import  extract_UUID_from_client
 import logging
 import base64
@@ -21,10 +22,8 @@ def test_setup(live_server):
 # Hard to just add more live server URLs when one test is already running (I think)
 # So we add our test here (was in a different file)
 def test_check_notification(client, live_server):
+    #live_server_setup(live_server)
     set_original_response()
-
-    # Give the endpoint time to spin up
-    time.sleep(3)
 
     # Re 360 - new install should have defaults set
     res = client.get(url_for("settings_page"))
@@ -62,13 +61,13 @@ def test_check_notification(client, live_server):
     test_url = url_for('test_endpoint', _external=True)
     res = client.post(
         url_for("form_quick_watch_add"),
-        data={"url": test_url, "tag": ''},
+        data={"url": test_url, "tags": ''},
         follow_redirects=True
     )
     assert b"Watch added" in res.data
 
     # Give the thread time to pick up the first version
-    time.sleep(3)
+    wait_for_all_checks(client)
 
     # We write the PNG to disk, but a JPEG should appear in the notification
     # Write the last screenshot png
@@ -105,7 +104,7 @@ def test_check_notification(client, live_server):
 
     notification_form_data.update({
         "url": test_url,
-        "tag": "my tag",
+        "tags": "my tag, my second tag",
         "title": "my title",
         "headers": "",
         "fetch_backend": "html_requests"})
@@ -128,7 +127,7 @@ def test_check_notification(client, live_server):
 
 
     ## Now recheck, and it should have sent the notification
-    time.sleep(3)
+    wait_for_all_checks(client)
     set_modified_response()
 
     # Trigger a check
@@ -141,8 +140,7 @@ def test_check_notification(client, live_server):
 
     # Did we see the URL that had a change, in the notification?
     # Diff was correctly executed
-    assert test_url in notification_submission
-    assert ':-)' in notification_submission
+
     assert "Diff Full: Some initial text" in notification_submission
     assert "Diff: (changed) Which is across multiple lines" in notification_submission
     assert "(into) which has this one new line" in notification_submission
@@ -150,12 +148,13 @@ def test_check_notification(client, live_server):
     assert "b'" not in notification_submission
     assert re.search('Watch UUID: [0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}', notification_submission, re.IGNORECASE)
     assert "Watch title: my title" in notification_submission
-    assert "Watch tag: my tag" in notification_submission
+    assert "Watch tag: my tag, my second tag" in notification_submission
     assert "diff/" in notification_submission
     assert "preview/" in notification_submission
     assert ":-)" in notification_submission
     assert "New ChangeDetection.io Notification - {}".format(test_url) in notification_submission
-
+    assert test_url in notification_submission
+    assert ':-)' in notification_submission
     # Check the attachment was added, and that it is a JPEG from the original PNG
     notification_submission_object = json.loads(notification_submission)
     # We keep PNG screenshots for now
@@ -193,11 +192,11 @@ def test_check_notification(client, live_server):
 
     # Trigger a check
     client.get(url_for("form_watch_checknow"), follow_redirects=True)
-    time.sleep(1)
+    wait_for_all_checks(client)
     client.get(url_for("form_watch_checknow"), follow_redirects=True)
-    time.sleep(1)
+    wait_for_all_checks(client)
     client.get(url_for("form_watch_checknow"), follow_redirects=True)
-    time.sleep(1)
+    wait_for_all_checks(client)
     assert os.path.exists("test-datastore/notification.txt") == False
 
     res = client.get(url_for("notification_logs"))
@@ -209,7 +208,7 @@ def test_check_notification(client, live_server):
         url_for("edit_page", uuid="first"),
         data={
         "url": test_url,
-        "tag": "my tag",
+        "tags": "my tag",
         "title": "my title",
         "notification_urls": '',
         "notification_title": '',
@@ -243,7 +242,7 @@ def test_notification_validation(client, live_server):
     test_url = url_for('test_endpoint', _external=True)
     res = client.post(
         url_for("form_quick_watch_add"),
-        data={"url": test_url, "tag": 'nice one'},
+        data={"url": test_url, "tags": 'nice one'},
         follow_redirects=True
     )
 
@@ -274,7 +273,7 @@ def test_notification_validation(client, live_server):
 
 
 def test_notification_custom_endpoint_and_jinja2(client, live_server):
-    time.sleep(1)
+    #live_server_setup(live_server)
 
     # test_endpoint - that sends the contents of a file
     # test_notification_endpoint - that takes a POST and writes it to file (test-datastore/notification.txt)
@@ -285,12 +284,14 @@ def test_notification_custom_endpoint_and_jinja2(client, live_server):
 
     res = client.post(
         url_for("settings_page"),
-        data={"application-notification_title": "New ChangeDetection.io Notification - {{ watch_url }}",
-              "application-notification_body": '{ "url" : "{{ watch_url }}", "secret": 444 }',
-              # https://github.com/caronc/apprise/wiki/Notify_Custom_JSON#get-parameter-manipulation
-              "application-notification_urls": test_notification_url,
+        data={
+              "application-fetch_backend": "html_requests",
               "application-minutes_between_check": 180,
-              "application-fetch_backend": "html_requests"
+              "application-notification_body": '{ "url" : "{{ watch_url }}", "secret": 444 }',
+              "application-notification_format": default_notification_format,
+              "application-notification_urls": test_notification_url,
+              # https://github.com/caronc/apprise/wiki/Notify_Custom_JSON#get-parameter-manipulation
+              "application-notification_title": "New ChangeDetection.io Notification - {{ watch_url }}",
               },
         follow_redirects=True
     )
@@ -303,21 +304,20 @@ def test_notification_custom_endpoint_and_jinja2(client, live_server):
     test_url = url_for('test_endpoint', _external=True)
     res = client.post(
         url_for("form_quick_watch_add"),
-        data={"url": test_url, "tag": 'nice one'},
+        data={"url": test_url, "tags": 'nice one'},
         follow_redirects=True
     )
 
     assert b"Watch added" in res.data
 
-    time.sleep(2)
+    wait_for_all_checks(client)
     set_modified_response()
 
     client.get(url_for("form_watch_checknow"), follow_redirects=True)
     time.sleep(2)
 
-
     with open("test-datastore/notification.txt", 'r') as f:
-        x=f.read()
+        x = f.read()
         j = json.loads(x)
         assert j['url'].startswith('http://localhost')
         assert j['secret'] == 444
@@ -328,5 +328,9 @@ def test_notification_custom_endpoint_and_jinja2(client, live_server):
         notification_url = f.read()
         assert 'xxx=http' in notification_url
 
-    os.unlink("test-datastore/notification-url.txt")
+    # Should always be automatically detected as JSON content type even when we set it as 'Text' (default)
+    assert os.path.isfile("test-datastore/notification-content-type.txt")
+    with open("test-datastore/notification-content-type.txt", 'r') as f:
+        assert 'application/json' in f.read()
 
+    os.unlink("test-datastore/notification-url.txt")

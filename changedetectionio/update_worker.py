@@ -5,7 +5,7 @@ import time
 
 from changedetectionio import content_fetcher
 from .processors.text_json_diff import FilterNotFoundInResponse
-
+from .processors.restock_diff import UnableToExtractRestockData
 
 # A single update worker
 #
@@ -26,16 +26,89 @@ class update_worker(threading.Thread):
         self.datastore = datastore
         super().__init__(*args, **kwargs)
 
-    def send_content_changed_notification(self, t, watch_uuid):
+    def queue_notification_for_watch(self, n_object, watch):
 
         from changedetectionio import diff
 
+        watch_history = watch.history
+        dates = list(watch_history.keys())
+        # Add text that was triggered
+        snapshot_contents = watch.get_history_snapshot(dates[-1])
+
+        # HTML needs linebreak, but MarkDown and Text can use a linefeed
+        if n_object['notification_format'] == 'HTML':
+            line_feed_sep = "<br>"
+            # Snapshot will be plaintext on the disk, convert to some kind of HTML
+            snapshot_contents = snapshot_contents.replace('\n', line_feed_sep)
+        else:
+            line_feed_sep = "\n"
+
+        trigger_text = watch.get('trigger_text', [])
+        triggered_text = ''
+
+        if len(trigger_text):
+            from . import html_tools
+            triggered_text = html_tools.get_triggered_text(content=snapshot_contents, trigger_text=trigger_text)
+            if triggered_text:
+                triggered_text = line_feed_sep.join(triggered_text)
+
+
+        n_object.update({
+            'current_snapshot': snapshot_contents,
+            'diff': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), line_feed_sep=line_feed_sep),
+            'diff_added': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), include_removed=False, line_feed_sep=line_feed_sep),
+            'diff_full': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), include_equal=True, line_feed_sep=line_feed_sep),
+            'diff_removed': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), include_added=False, line_feed_sep=line_feed_sep),
+            'screenshot': watch.get_screenshot() if watch.get('notification_screenshot') else None,
+            'triggered_text': triggered_text,
+            'uuid': watch.get('uuid'),
+            'watch_url': watch.get('url'),
+        })
+        logging.info (">> SENDING NOTIFICATION")
+        self.notification_q.put(n_object)
+
+    # Prefer - Individual watch settings > Tag settings >  Global settings (in that order)
+    def _check_cascading_vars(self, var_name, watch):
+
         from changedetectionio.notification import (
-            default_notification_format_for_watch
+            default_notification_format_for_watch,
+            default_notification_body,
+            default_notification_title
         )
 
+
+        # Would be better if this was some kind of Object where Watch can reference the parent datastore etc
+        v = watch.get(var_name)
+        if v and not watch.get('notification_muted'):
+            if var_name == 'notification_format' and v == default_notification_format_for_watch:
+                return self.datastore.data['settings']['application'].get('notification_format')
+
+            return v
+
+        tags = self.datastore.get_all_tags_for_watch(uuid=watch.get('uuid'))
+        if tags:
+            for tag_uuid, tag in tags.items():
+                v = tag.get(var_name)
+                if v and not tag.get('notification_muted'):
+                    return v
+
+        if self.datastore.data['settings']['application'].get(var_name):
+            return self.datastore.data['settings']['application'].get(var_name)
+
+        # Otherwise could be defaults
+        if var_name == 'notification_format':
+            return default_notification_format_for_watch
+        if var_name == 'notification_body':
+            return default_notification_body
+        if var_name == 'notification_title':
+            return default_notification_title
+
+        return None
+
+    def send_content_changed_notification(self, watch_uuid):
+
         n_object = {}
-        watch = self.datastore.data['watching'].get(watch_uuid, False)
+        watch = self.datastore.data['watching'].get(watch_uuid)
         if not watch:
             return
 
@@ -48,59 +121,27 @@ class update_worker(threading.Thread):
                 "History index had 2 or more, but only 1 date loaded, timestamps were not unique? maybe two of the same timestamps got written, needs more delay?"
             )
 
-        n_object['notification_urls'] = watch['notification_urls'] if len(watch['notification_urls']) else \
-            self.datastore.data['settings']['application']['notification_urls']
+        # Should be a better parent getter in the model object
 
-        n_object['notification_title'] = watch['notification_title'] if watch['notification_title'] else \
-            self.datastore.data['settings']['application']['notification_title']
+        # Prefer - Individual watch settings > Tag settings >  Global settings (in that order)
+        n_object['notification_urls'] = self._check_cascading_vars('notification_urls', watch)
+        n_object['notification_title'] = self._check_cascading_vars('notification_title', watch)
+        n_object['notification_body'] = self._check_cascading_vars('notification_body', watch)
+        n_object['notification_format'] = self._check_cascading_vars('notification_format', watch)
 
-        n_object['notification_body'] = watch['notification_body'] if watch['notification_body'] else \
-            self.datastore.data['settings']['application']['notification_body']
+        # (Individual watch) Only prepare to notify if the rules above matched
+        queued = False
+        if n_object and n_object.get('notification_urls'):
+            queued = True
+            self.queue_notification_for_watch(n_object, watch)
 
-        n_object['notification_format'] = watch['notification_format'] if watch['notification_format'] != default_notification_format_for_watch else \
-            self.datastore.data['settings']['application']['notification_format']
+        return queued
 
-
-        # Only prepare to notify if the rules above matched
-        if 'notification_urls' in n_object and n_object['notification_urls']:
-            # HTML needs linebreak, but MarkDown and Text can use a linefeed
-            if n_object['notification_format'] == 'HTML':
-                line_feed_sep = "<br>"
-            else:
-                line_feed_sep = "\n"
-
-            # Add text that was triggered
-            snapshot_contents = watch.get_history_snapshot(dates[-1])
-            trigger_text = watch.get('trigger_text', [])
-            triggered_text = ''
-
-            if len(trigger_text):
-                from . import html_tools
-                triggered_text = html_tools.get_triggered_text(content=snapshot_contents, trigger_text=trigger_text)
-                if triggered_text:
-                    triggered_text = line_feed_sep.join(triggered_text)
-
-
-            n_object.update({
-                'current_snapshot': snapshot_contents,
-                'diff': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), line_feed_sep=line_feed_sep),
-                'diff_added': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), include_removed=False, line_feed_sep=line_feed_sep),
-                'diff_full': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), include_equal=True, line_feed_sep=line_feed_sep),
-                'diff_removed': diff.render_diff(watch.get_history_snapshot(dates[-2]), watch.get_history_snapshot(dates[-1]), include_added=False, line_feed_sep=line_feed_sep),
-                'screenshot': watch.get_screenshot() if watch.get('notification_screenshot') else None,
-                'triggered_text': triggered_text,
-                'uuid': watch_uuid,
-                'watch_url': watch['url'],
-            })
-            logging.info (">> SENDING NOTIFICATION")
-            self.notification_q.put(n_object)
-        else:
-            logging.info (">> NO Notification sent, notification_url was empty in both watch and system")
 
     def send_filter_failure_notification(self, watch_uuid):
 
         threshold = self.datastore.data['settings']['application'].get('filter_failure_notification_threshold_attempts')
-        watch = self.datastore.data['watching'].get(watch_uuid, False)
+        watch = self.datastore.data['watching'].get(watch_uuid)
         if not watch:
             return
 
@@ -177,7 +218,7 @@ class update_worker(threading.Thread):
                 uuid = queued_item_data.item.get('uuid')
                 self.current_uuid = uuid
 
-                if uuid in list(self.datastore.data['watching'].keys()):
+                if uuid in list(self.datastore.data['watching'].keys()) and self.datastore.data['watching'][uuid].get('url'):
                     changed_detected = False
                     contents = b''
                     process_changedetection_results = True
@@ -238,7 +279,7 @@ class update_worker(threading.Thread):
                         if not self.datastore.data['watching'].get(uuid):
                             continue
 
-                        err_text = "Warning, no filters were found, no change detection ran."
+                        err_text = "Warning, no filters were found, no change detection ran - Did the page change layout? update your Visual Filter if necessary."
                         self.datastore.update_watch(uuid=uuid, update_obj={'last_error': err_text})
 
                         # Only when enabled, send the notification
@@ -262,6 +303,7 @@ class update_worker(threading.Thread):
                         # Yes fine, so nothing todo, don't continue to process.
                         process_changedetection_results = False
                         changed_detected = False
+                        self.datastore.update_watch(uuid=uuid, update_obj={'last_error': False})
 
                     except content_fetcher.BrowserStepsStepTimout as e:
 
@@ -315,7 +357,13 @@ class update_worker(threading.Thread):
                             self.datastore.save_screenshot(watch_uuid=uuid, screenshot=e.screenshot, as_error=True)
 
                         self.datastore.update_watch(uuid=uuid, update_obj={'last_error': err_text,
-                                                                           'last_check_status': e.status_code})
+                                                                           'last_check_status': e.status_code,
+                                                                           'has_ldjson_price_data': None})
+                        process_changedetection_results = False
+                    except UnableToExtractRestockData as e:
+                        # Usually when fetcher.instock_data returns empty
+                        self.app.logger.error("Exception reached processing watch UUID: %s - %s", uuid, str(e))
+                        self.datastore.update_watch(uuid=uuid, update_obj={'last_error': f"Unable to extract restock data for this page unfortunately. (Got code {e.status_code} from server)"})
                         process_changedetection_results = False
                     except Exception as e:
                         self.app.logger.error("Exception reached processing watch UUID: %s - %s", uuid, str(e))
@@ -353,7 +401,7 @@ class update_worker(threading.Thread):
                                 # Notifications should only trigger on the second time (first time, we gather the initial snapshot)
                                 if watch.history_n >= 2:
                                     if not self.datastore.data['watching'][uuid].get('notification_muted'):
-                                        self.send_content_changed_notification(self, watch_uuid=uuid)
+                                        self.send_content_changed_notification(watch_uuid=uuid)
 
 
                         except Exception as e:

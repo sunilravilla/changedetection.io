@@ -2,7 +2,7 @@
 {% block content %}
 {% from '_helpers.jinja' import render_field, render_checkbox_field, render_button %}
 {% from '_common_fields.jinja' import render_common_settings_form %}
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='tabs.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='tabs.js')}}" defer></script>
 <script>
     const notification_base_url="{{url_for('ajax_callback_send_notification_test')}}";
     const watch_visual_selector_data_url="{{url_for('static_content', group='visual_selector_data', filename=uuid)}}";
@@ -14,15 +14,17 @@
 {% endif %}
 
     const browser_steps_config=JSON.parse('{{ browser_steps_config|tojson }}');
+    const browser_steps_start_url="{{url_for('browser_steps.browsersteps_start_session', uuid=uuid)}}";
     const browser_steps_sync_url="{{url_for('browser_steps.browsersteps_ui_update', uuid=uuid)}}";
+
 </script>
 
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='watch-settings.js')}}" defer></script>
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='limit.js')}}" defer></script>
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='notifications.js')}}" defer></script>
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='visual-selector.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='watch-settings.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='limit.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='notifications.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='visual-selector.js')}}" defer></script>
 {% if playwright_enabled %}
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='browser-steps.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='browser-steps.js')}}" defer></script>
 {% endif %}
 
 <div class="edit-form monospaced-textarea">
@@ -50,7 +52,7 @@
     <div class="box-wrap inner">
         <form class="pure-form pure-form-stacked"
               action="{{ url_for('edit_page', uuid=uuid, next = request.args.get('next'), unpause_on_save = request.args.get('unpause_on_save')) }}" method="POST">
-             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
             <div class="tab-pane-inner" id="general">
                 <fieldset>
@@ -73,7 +75,7 @@
                         {{ render_field(form.title, class="m-d") }}
                     </div>
                     <div class="pure-control-group">
-                        {{ render_field(form.tag) }}
+                        {{ render_field(form.tags) }}
                         <span class="pure-form-message-inline">Organisational tag/group name used in the main listing page</span>
                     </div>
                     <div class="pure-control-group">
@@ -149,6 +151,17 @@
 {{ render_field(form.headers, rows=5, placeholder="Example
 Cookie: foobar
 User-Agent: wonderbra 1.0") }}
+
+                        <div class="pure-form-message-inline">
+                            {% if has_extra_headers_file %}
+                                <strong>Alert! Extra headers file found and will be added to this watch!</strong>
+                            {% else %}
+                                Headers can be also read from a file in your data-directory <a href="https://github.com/dgtlmoon/changedetection.io/wiki/Adding-headers-from-an-external-file">Read more here</a>
+                            {% endif %}
+                            <br>
+                            (Not supported by Selenium browser)
+                        </div>
+
                     </div>
                     <div class="pure-control-group" id="request-body">
                                         {{ render_field(form.body, rows=5, placeholder="Example
@@ -162,7 +175,7 @@ User-Agent: wonderbra 1.0") }}
             </div>
             {% if playwright_enabled %}
             <div class="tab-pane-inner" id="browser-steps">
-                <img class="beta-logo" src="{{url_for('static_content', group='images', filename='beta-logo.png')}}">
+                <img class="beta-logo" src="{{url_for('static_content', group='images', filename='beta-logo.png')}}" alt="New beta functionality">
                 <fieldset>
                     <div class="pure-control-group">
                         <!--
@@ -185,11 +198,12 @@ User-Agent: wonderbra 1.0") }}
                                     <span class="loader" >
                                         <span id="browsersteps-click-start">
                                             <h2 >Click here to Start</h2>
-                                            Please allow 10-15 seconds for the browser to connect.
+                                            <svg style="height: 3.5rem;" version="1.1" viewBox="0 0 32 32"  xml:space="preserve" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><g id="Layer_1"/><g id="play_x5F_alt"><path d="M16,0C7.164,0,0,7.164,0,16s7.164,16,16,16s16-7.164,16-16S24.836,0,16,0z M10,24V8l16.008,8L10,24z" style="fill: var(--color-grey-400);"/></g></svg><br>
+                                            Please allow 10-15 seconds for the browser to connect.<br>
                                         </span>
                                         <div class="spinner"  style="display: none;"></div>
                                     </span>
-                                    <img  class="noselect" id="browsersteps-img" src="" style="max-width: 100%; width: 100%;" />
+                                    <img class="noselect" id="browsersteps-img" src="" style="max-width: 100%; width: 100%;" >
                                     <canvas  class="noselect" id="browsersteps-selector-canvas" style="max-width: 100%; width: 100%;"></canvas>
                                 </div>
                             </div>
@@ -219,7 +233,7 @@ User-Agent: wonderbra 1.0") }}
                     <div class="field-group" id="notification-field-group">
                         {% if has_default_notification_urls %}
                         <div class="inline-warning">
-                            <img class="inline-warning-icon" src="{{url_for('static_content', group='images', filename='notice.svg')}}" alt="Look out!" title="Lookout!"/>
+                            <img class="inline-warning-icon" src="{{url_for('static_content', group='images', filename='notice.svg')}}" alt="Look out!" title="Lookout!" >
                             There are <a href="{{ url_for('settings_page')}}#notifications">system-wide notification URLs enabled</a>, this form will override notification settings for this watch only &dash; an empty Notification URL list here will still send notifications.
                         </div>
                         {% endif %}
@@ -389,7 +403,7 @@ Unavailable") }}
 
             {% if watch['processor'] == 'text_json_diff' %}
             <div class="tab-pane-inner visual-selector-ui" id="visualselector">
-                <img class="beta-logo" src="{{url_for('static_content', group='images', filename='beta-logo.png')}}">
+                <img class="beta-logo" src="{{url_for('static_content', group='images', filename='beta-logo.png')}}" alt="New beta functionality">
 
                 <fieldset>
                     <div class="pure-control-group">
@@ -406,7 +420,7 @@ Unavailable") }}
                                 <!-- request the screenshot and get the element offset info ready -->
                                 <!-- use img src ready load to know everything is ready to map out -->
                                 <!-- @todo: maybe something interesting like a field to select 'elements that contain text... and their parents n' -->
-                                <img id="selector-background" />
+                                <img id="selector-background" >
                                 <canvas id="selector-canvas"></canvas>
                             </div>
                             <div id="selector-current-xpath" style="overflow-x: hidden"><strong>Currently:</strong>&nbsp;<span class="text">Loading...</span></div>

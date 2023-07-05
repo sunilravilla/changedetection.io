@@ -9,10 +9,10 @@
     const email_notification_prefix=JSON.parse('{{emailprefix|tojson}}');
 {% endif %}
 </script>
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='tabs.js')}}" defer></script>
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='notifications.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='tabs.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='notifications.js')}}" defer></script>
 
-<script type="text/javascript" src="{{url_for('static_content', group='js', filename='global-settings.js')}}" defer></script>
+<script src="{{url_for('static_content', group='js', filename='global-settings.js')}}" defer></script>
 <div class="edit-form">
     <div class="tabs collapsable">
         <ul>
@@ -26,7 +26,7 @@
     </div>
     <div class="box-wrap inner">
         <form class="pure-form pure-form-stacked settings" action="{{url_for('settings_page')}}" method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" >
             <div class="tab-pane-inner" id="general">
                 <fieldset>
                     <div class="pure-control-group">
@@ -69,6 +69,10 @@
                             Base URL used for the <code>{{ '{{ base_url }}' }}</code> token in notifications and RSS links.<br>Default value is the ENV var 'BASE_URL' (Currently "{{settings_application['current_base_url']}}"),
                             <a href="https://github.com/dgtlmoon/changedetection.io/wiki/Configurable-BASE_URL-setting">read more here</a>.
                         </span>
+                    </div>
+                    <div class="pure-control-group">
+                        {{ render_field(form.application.form.pager_size) }}
+                        <span class="pure-form-message-inline">Number of items per page in the watch overview list, 0 to disable.</span>
                     </div>
 
                     <div class="pure-control-group">

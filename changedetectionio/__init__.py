@@ -33,10 +33,12 @@ from flask import (
     url_for,
 )
 
+from flask_paginate import Pagination, get_page_parameter
+
 from changedetectionio import html_tools
 from changedetectionio.api import api_v1
 
-__version__ = '0.41.1'
+__version__ = '0.43.2'
 
 datastore = None
 
@@ -121,6 +123,15 @@ def _jinja2_filter_datetimestamp(timestamp, format="%Y-%m-%d %H:%M:%S"):
         return 'Not yet'
 
     return timeago.format(timestamp, time.time())
+
+
+@app.template_filter('pagination_slice')
+def _jinja2_filter_pagination_slice(arr, skip):
+    per_page = datastore.data['settings']['application'].get('pager_size', 50)
+    if per_page:
+        return arr[skip:skip + per_page]
+
+    return arr
 
 @app.template_filter('format_seconds_ago')
 def _jinja2_filter_seconds_precise(timestamp):
@@ -306,25 +317,21 @@ def changedetection_app(config=None, datastore_o=None):
             return "Access denied, bad token", 403
 
         from . import diff
-        limit_tag = request.args.get('tag')
+        limit_tag = request.args.get('tag', '').lower().strip()
+        # Be sure limit_tag is a uuid
+        for uuid, tag in datastore.data['settings']['application'].get('tags', {}).items():
+            if limit_tag == tag.get('title', '').lower().strip():
+                limit_tag = uuid
 
         # Sort by last_changed and add the uuid which is usually the key..
         sorted_watches = []
 
         # @todo needs a .itemsWithTag() or something - then we can use that in Jinaj2 and throw this away
         for uuid, watch in datastore.data['watching'].items():
-
-            if limit_tag != None:
-                # Support for comma separated list of tags.
-                for tag_in_watch in watch['tag'].split(','):
-                    tag_in_watch = tag_in_watch.strip()
-                    if tag_in_watch == limit_tag:
-                        watch['uuid'] = uuid
-                        sorted_watches.append(watch)
-
-            else:
-                watch['uuid'] = uuid
-                sorted_watches.append(watch)
+            if limit_tag and not limit_tag in watch['tags']:
+                    continue
+            watch['uuid'] = uuid
+            sorted_watches.append(watch)
 
         sorted_watches.sort(key=lambda x: x.last_changed, reverse=False)
 
@@ -381,9 +388,17 @@ def changedetection_app(config=None, datastore_o=None):
     @app.route("/", methods=['GET'])
     @login_optionally_required
     def index():
+        global datastore
         from changedetectionio import forms
 
-        limit_tag = request.args.get('tag')
+        limit_tag = request.args.get('tag', '').lower().strip()
+
+        # Be sure limit_tag is a uuid
+        for uuid, tag in datastore.data['settings']['application'].get('tags', {}).items():
+            if limit_tag == tag.get('title', '').lower().strip():
+                limit_tag = uuid
+
+
         # Redirect for the old rss path which used the /?rss=true
         if request.args.get('rss'):
             return redirect(url_for('rss', tag=limit_tag))
@@ -401,44 +416,60 @@ def changedetection_app(config=None, datastore_o=None):
 
         # Sort by last_changed and add the uuid which is usually the key..
         sorted_watches = []
+        search_q = request.args.get('q').strip().lower() if request.args.get('q') else False
         for uuid, watch in datastore.data['watching'].items():
-
-            if limit_tag != None:
-                # Support for comma separated list of tags.
-                if watch['tag'] is None:
+            if limit_tag and not limit_tag in watch['tags']:
                     continue
-                for tag_in_watch in watch['tag'].split(','):
-                    tag_in_watch = tag_in_watch.strip()
-                    if tag_in_watch == limit_tag:
-                        watch['uuid'] = uuid
-                        sorted_watches.append(watch)
 
+            if search_q:
+                if (watch.get('title') and search_q in watch.get('title').lower()) or search_q in watch.get('url', '').lower():
+                    sorted_watches.append(watch)
             else:
-                watch['uuid'] = uuid
                 sorted_watches.append(watch)
 
-        existing_tags = datastore.get_all_tags()
         form = forms.quickWatchForm(request.form)
+        page = request.args.get(get_page_parameter(), type=int, default=1)
+        total_count = len(sorted_watches)
+
+        pagination = Pagination(page=page,
+                                total=total_count,
+                                per_page=datastore.data['settings']['application'].get('pager_size', 50), css_framework="semantic")
+
+
         output = render_template(
             "watch-overview.html",
                                  # Don't link to hosting when we're on the hosting environment
                                  active_tag=limit_tag,
                                  app_rss_token=datastore.data['settings']['application']['rss_access_token'],
+                                 datastore=datastore,
                                  form=form,
                                  guid=datastore.data['app_guid'],
                                  has_proxies=datastore.proxy_list,
                                  has_unviewed=datastore.has_unviewed,
                                  hosted_sticky=os.getenv("SALTED_PASS", False) == False,
+                                 pagination=pagination,
                                  queued_uuids=[q_uuid.item['uuid'] for q_uuid in update_q.queue],
+                                 search_q=request.args.get('q','').strip(),
+                                 sort_attribute=request.args.get('sort') if request.args.get('sort') else request.cookies.get('sort'),
+                                 sort_order=request.args.get('order') if request.args.get('order') else request.cookies.get('order'),
                                  system_default_fetcher=datastore.data['settings']['application'].get('fetch_backend'),
-                                 tags=existing_tags,
+                                 tags=datastore.data['settings']['application'].get('tags'),
                                  watches=sorted_watches
                                  )
 
-
         if session.get('share-link'):
             del(session['share-link'])
-        return output
+
+        resp = make_response(output)
+
+        # The template can run on cookie or url query info
+        if request.args.get('sort'):
+            resp.set_cookie('sort', request.args.get('sort'))
+        if request.args.get('order'):
+            resp.set_cookie('order', request.args.get('order'))
+
+        return resp
+
 
 
     # AJAX endpoint for sending a test
@@ -463,11 +494,19 @@ def changedetection_app(config=None, datastore_o=None):
 
         try:
             n_object = {'watch_url': request.form['window_url'],
-                        'notification_urls': request.form['notification_urls'].splitlines(),
-                        'notification_title': request.form['notification_title'].strip(),
-                        'notification_body': request.form['notification_body'].strip(),
-                        'notification_format': request.form['notification_format'].strip()
+                        'notification_urls': request.form['notification_urls'].splitlines()
                         }
+
+            # Only use if present, if not set in n_object it should use the default system value
+            if 'notification_format' in request.form and request.form['notification_format'].strip():
+                n_object['notification_format'] = request.form.get('notification_format', '').strip()
+
+            if 'notification_title' in request.form and request.form['notification_title'].strip():
+                n_object['notification_title'] = request.form.get('notification_title', '').strip()
+
+            if 'notification_body' in request.form and request.form['notification_body'].strip():
+                n_object['notification_body'] = request.form.get('notification_body', '').strip()
+
             notification_q.put(n_object)
         except Exception as e:
             return make_response({'error': str(e)}, 400)
@@ -557,8 +596,12 @@ def changedetection_app(config=None, datastore_o=None):
 
         # proxy_override set to the json/text list of the items
         form = forms.watchForm(formdata=request.form if request.method == 'POST' else None,
-                               data=default,
+                               data=default
                                )
+
+        # For the form widget tag uuid lookup
+        form.tags.datastore = datastore # in _value
+
 
         form.fetch_backend.choices.append(("system", 'System settings default'))
 
@@ -610,6 +653,16 @@ def changedetection_app(config=None, datastore_o=None):
                 extra_update_obj['filter_text_replaced'] = True
                 extra_update_obj['filter_text_removed'] = True
 
+            # Because wtforms doesn't support accessing other data in process_ , but we convert the CSV list of tags back to a list of UUIDs
+            tag_uuids = []
+            if form.data.get('tags'):
+                # Sometimes in testing this can be list, dont know why
+                if type(form.data.get('tags')) == list:
+                    extra_update_obj['tags'] = form.data.get('tags')
+                else:
+                    for t in form.data.get('tags').split(','):
+                        tag_uuids.append(datastore.add_tag(name=t))
+                    extra_update_obj['tags'] = tag_uuids
 
             datastore.data['watching'][uuid].update(form.data)
             datastore.data['watching'][uuid].update(extra_update_obj)
@@ -664,6 +717,7 @@ def changedetection_app(config=None, datastore_o=None):
                                      form=form,
                                      has_default_notification_urls=True if len(datastore.data['settings']['application']['notification_urls']) else False,
                                      has_empty_checktime=using_default_check_time,
+                                     has_extra_headers_file=len(datastore.get_all_headers_in_textfile_for_watch(uuid=uuid)) > 0,
                                      is_html_webdriver=is_html_webdriver,
                                      jq_support=jq_support,
                                      playwright_enabled=os.getenv('PLAYWRIGHT_DRIVER_URL', False),
@@ -1060,8 +1114,8 @@ def changedetection_app(config=None, datastore_o=None):
                 os.path.join(datastore_o.datastore_path, list_with_tags_file), "w"
             ) as f:
                 for uuid in datastore.data["watching"]:
-                    url = datastore.data["watching"][uuid]["url"]
-                    tag = datastore.data["watching"][uuid]["tag"]
+                    url = datastore.data["watching"][uuid].get('url')
+                    tag = datastore.data["watching"][uuid].get('tags', {})
                     f.write("{} {}\r\n".format(url, tag))
 
             # Add it to the Zip
@@ -1149,7 +1203,7 @@ def changedetection_app(config=None, datastore_o=None):
 
         add_paused = request.form.get('edit_and_watch_submit_button') != None
         processor = request.form.get('processor', 'text_json_diff')
-        new_uuid = datastore.add_watch(url=url, tag=request.form.get('tag').strip(), extras={'paused': add_paused, 'processor': processor})
+        new_uuid = datastore.add_watch(url=url, tag=request.form.get('tags').strip(), extras={'paused': add_paused, 'processor': processor})
 
         if new_uuid:
             if add_paused:
@@ -1217,9 +1271,11 @@ def changedetection_app(config=None, datastore_o=None):
         elif tag != None:
             # Items that have this current tag
             for watch_uuid, watch in datastore.data['watching'].items():
-                if (tag != None and tag in watch['tag']):
+                if (tag != None and tag in watch.get('tags', {})):
                     if watch_uuid not in running_uuids and not datastore.data['watching'][watch_uuid]['paused']:
-                        update_q.put(queuedWatchMetaData.PrioritizedItem(priority=1, item={'uuid': watch_uuid, 'skip_when_checksum_same': False}))
+                        update_q.put(
+                            queuedWatchMetaData.PrioritizedItem(priority=1, item={'uuid': watch_uuid, 'skip_when_checksum_same': False})
+                        )
                         i += 1
 
         else:
@@ -1258,6 +1314,13 @@ def changedetection_app(config=None, datastore_o=None):
                     datastore.data['watching'][uuid.strip()]['paused'] = False
             flash("{} watches unpaused".format(len(uuids)))
 
+        elif (op == 'mark-viewed'):
+            for uuid in uuids:
+                uuid = uuid.strip()
+                if datastore.data['watching'].get(uuid):
+                    datastore.set_last_viewed(uuid, int(time.time()))
+            flash("{} watches updated".format(len(uuids)))
+
         elif (op == 'mute'):
             for uuid in uuids:
                 uuid = uuid.strip()
@@ -1280,6 +1343,13 @@ def changedetection_app(config=None, datastore_o=None):
                     update_q.put(queuedWatchMetaData.PrioritizedItem(priority=1, item={'uuid': uuid, 'skip_when_checksum_same': False}))
             flash("{} watches queued for rechecking".format(len(uuids)))
 
+        elif (op == 'clear-history'):
+            for uuid in uuids:
+                uuid = uuid.strip()
+                if datastore.data['watching'].get(uuid):
+                    datastore.clear_watch_history(uuid)
+            flash("{} watches cleared/reset.".format(len(uuids)))
+
         elif (op == 'notification-default'):
             from changedetectionio.notification import (
                 default_notification_format_for_watch
@@ -1293,6 +1363,18 @@ def changedetection_app(config=None, datastore_o=None):
                     datastore.data['watching'][uuid.strip()]['notification_format'] = default_notification_format_for_watch
             flash("{} watches set to use default notification settings".format(len(uuids)))
 
+        elif (op == 'assign-tag'):
+            op_extradata = request.form.get('op_extradata', '').strip()
+            if op_extradata:
+                tag_uuid = datastore.add_tag(name=op_extradata)
+                if op_extradata and tag_uuid:
+                    for uuid in uuids:
+                        uuid = uuid.strip()
+                        if datastore.data['watching'].get(uuid):
+                            datastore.data['watching'][uuid]['tags'].append(tag_uuid)
+
+            flash("{} watches assigned tag".format(len(uuids)))
+
         return redirect(url_for('index'))
 
     @app.route("/api/share-url", methods=['GET'])
@@ -1302,7 +1384,6 @@ def changedetection_app(config=None, datastore_o=None):
            the share-link can be imported/added"""
         import requests
         import json
-        tag = request.args.get('tag')
         uuid = request.args.get('uuid')
 
         # more for testing
@@ -1355,6 +1436,8 @@ def changedetection_app(config=None, datastore_o=None):
     import changedetectionio.blueprint.price_data_follower as price_data_follower
     app.register_blueprint(price_data_follower.construct_blueprint(datastore, update_q), url_prefix='/price_data_follower')
 
+    import changedetectionio.blueprint.tags as tags
+    app.register_blueprint(tags.construct_blueprint(datastore), url_prefix='/tags')
 
     # @todo handle ctrl break
     ticker_thread = threading.Thread(target=ticker_thread_check_time_launch_checks).start()
@@ -1393,6 +1476,7 @@ def check_for_new_version():
 
         # Check daily
         app.config.exit.wait(86400)
+
 
 def notification_runner():
     global notification_debug_log

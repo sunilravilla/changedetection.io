@@ -59,6 +59,8 @@ def test_http_error_handler(client, live_server):
     _runner_test_http_errors(client, live_server, 404, 'Page not found')
     _runner_test_http_errors(client, live_server, 500, '(Internal server Error) received')
     _runner_test_http_errors(client, live_server, 400, 'Error - Request returned a HTTP error code 400')
+    res = client.get(url_for("form_delete", uuid="all"), follow_redirects=True)
+    assert b'Deleted' in res.data
 
 # Just to be sure error text is properly handled
 def test_DNS_errors(client, live_server):
@@ -81,4 +83,48 @@ def test_DNS_errors(client, live_server):
     assert found_name_resolution_error
     # Should always record that we tried
     assert bytes("just now".encode('utf-8')) in res.data
+    res = client.get(url_for("form_delete", uuid="all"), follow_redirects=True)
+    assert b'Deleted' in res.data
 
+# Re 1513
+def test_low_level_errors_clear_correctly(client, live_server):
+    #live_server_setup(live_server)
+    # Give the endpoint time to spin up
+    time.sleep(1)
+
+    with open("test-datastore/endpoint-content.txt", "w") as f:
+        f.write("<html><body><div id=here>Hello world</div></body></html>")
+
+    # Add our URL to the import page
+    test_url = url_for('test_endpoint', _external=True)
+
+    res = client.post(
+        url_for("import_page"),
+        data={"urls": "https://dfkjasdkfjaidjfsdajfksdajfksdjfDOESNTEXIST.com"},
+        follow_redirects=True
+    )
+    assert b"1 Imported" in res.data
+    time.sleep(2)
+
+    # We should see the DNS error
+    res = client.get(url_for("index"))
+    found_name_resolution_error = b"Temporary failure in name resolution" in res.data or b"Name or service not known" in res.data
+    assert found_name_resolution_error
+
+    # Update with what should work
+    client.post(
+        url_for("edit_page", uuid="first"),
+        data={
+            "url": test_url,
+            "fetch_backend": "html_requests"},
+        follow_redirects=True
+    )
+
+    # Now the error should be gone
+    time.sleep(2)
+    res = client.get(url_for("index"))
+    found_name_resolution_error = b"Temporary failure in name resolution" in res.data or b"Name or service not known" in res.data
+    assert not found_name_resolution_error
+
+    res = client.get(url_for("form_delete", uuid="all"), follow_redirects=True)
+    assert b'Deleted' in res.data

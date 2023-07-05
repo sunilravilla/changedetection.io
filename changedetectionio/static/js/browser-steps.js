@@ -114,11 +114,11 @@ $(document).ready(function () {
             e.preventDefault()
         });
 
+        // When the mouse moves we know which element it should be above
+        // mousedown will link that to the UI (select the right action, highlight etc)
         $('#browsersteps-selector-canvas').bind('mousedown', function (e) {
             // https://developer.mozilla.org/en-US/docs/Web/API/MouseEvent
             e.preventDefault()
-            console.log(e);
-            console.log("current xpath in index is " + current_selected_i);
             last_click_xy = {'x': parseInt((1 / x_scale) * e.offsetX), 'y': parseInt((1 / y_scale) * e.offsetY)}
             process_selected(current_selected_i);
             current_selected_i = false;
@@ -132,6 +132,7 @@ $(document).ready(function () {
             }
         });
 
+        // Debounce and find the current most 'interesting' element we are hovering above
         $('#browsersteps-selector-canvas').bind('mousemove', function (e) {
             if (!xpath_data) {
                 return;
@@ -151,40 +152,39 @@ $(document).ready(function () {
             current_selected_i = false;
             // Reverse order - the most specific one should be deeper/"laster"
             // Basically, find the most 'deepest'
-            //$('#browsersteps-selector-canvas').css('cursor', 'pointer');
-            for (var i = xpath_data['size_pos'].length; i !== 0; i--) {
-                // draw all of them? let them choose somehow?
-                var sel = xpath_data['size_pos'][i - 1];
+            var possible_elements = [];
+            xpath_data['size_pos'].forEach(function (item, index) {
                 // If we are in a bounding-box
-                if (e.offsetY > sel.top * y_scale && e.offsetY < sel.top * y_scale + sel.height * y_scale
+                if (e.offsetY > item.top * y_scale && e.offsetY < item.top * y_scale + item.height * y_scale
                     &&
-                    e.offsetX > sel.left * y_scale && e.offsetX < sel.left * y_scale + sel.width * y_scale
+                    e.offsetX > item.left * y_scale && e.offsetX < item.left * y_scale + item.width * y_scale
 
                 ) {
-                    // Only highlight these interesting types
-                    if (1) {
-                        ctx.strokeRect(sel.left * x_scale, sel.top * y_scale, sel.width * x_scale, sel.height * y_scale);
-                        ctx.fillRect(sel.left * x_scale, sel.top * y_scale, sel.width * x_scale, sel.height * y_scale);
-                        current_selected_i = i - 1;
-                        break;
-
-                        // find the smallest one at this x,y
-                        // does it mean sort the xpath list by size (w*h) i think so!
-                    } else {
-
-                        if (include_text_elements[0].checked === true) {
-                            // blue one with background instead?
-                            ctx.fillStyle = 'rgba(0,0,255, 0.1)';
-                            ctx.strokeStyle = 'rgba(0,0,200, 0.7)';
-                            $('#browsersteps-selector-canvas').css('cursor', 'grab');
-                            ctx.strokeRect(sel.left * x_scale, sel.top * y_scale, sel.width * x_scale, sel.height * y_scale);
-                            ctx.fillRect(sel.left * x_scale, sel.top * y_scale, sel.width * x_scale, sel.height * y_scale);
-                            current_selected_i = i - 1;
-                            break;
-                        }
+                    // There could be many elements here, record them all and then we'll find out which is the most 'useful'
+                    // (input, textarea, button, A etc)
+                    if (item.width < xpath_data['browser_width']) {
+                        possible_elements.push(item);
                     }
                 }
+            });
+
+            // Find the best one
+            if (possible_elements.length) {
+                possible_elements.forEach(function (item, index) {
+                  if (["a", "input", "textarea", "button"].includes(item['tagName'])) {
+                      current_selected_i = item;
+                  }
+                });
+
+                if (!current_selected_i) {
+                    current_selected_i = possible_elements[0];
+                }
+
+                sel = xpath_data['size_pos'][current_selected_i];
+                ctx.strokeRect(current_selected_i.left * x_scale, current_selected_i.top * y_scale, current_selected_i.width * x_scale, current_selected_i.height * y_scale);
+                ctx.fillRect(current_selected_i.left * x_scale, current_selected_i.top * y_scale, current_selected_i.width * x_scale, current_selected_i.height * y_scale);
             }
+
 
         }.debounce(10));
     });
@@ -195,16 +195,16 @@ $(document).ready(function () {
 
 
     // callback for clicking on an xpath on the canvas
-    function process_selected(xpath_data_index) {
+    function process_selected(selected_in_xpath_list) {
         found_something = false;
         var first_available = $("ul#browser_steps li.empty").first();
 
 
-        if (xpath_data_index !== false) {
+        if (selected_in_xpath_list !== false) {
             // Nothing focused, so fill in a new one
             // if inpt type button or <button>
             // from the top, find the next not used one and use it
-            var x = xpath_data['size_pos'][xpath_data_index];
+            var x = selected_in_xpath_list;
             console.log(x);
             if (x && first_available.length) {
                 // @todo will it let you click shit that has a layer ontop? probably not.
@@ -214,26 +214,18 @@ $(document).ready(function () {
                     $('input[placeholder="Value"]', first_available).addClass('ok').click().focus();
                     found_something = true;
                 } else {
-                    if (x['isClickable'] || x['tagName'].startsWith('h') || x['tagName'] === 'a' || x['tagName'] === 'button' || x['tagtype'] === 'submit' || x['tagtype'] === 'checkbox' || x['tagtype'] === 'radio' || x['tagtype'] === 'li') {
+                    // There's no good way (that I know) to find if this
+                    // see https://stackoverflow.com/questions/446892/how-to-find-event-listeners-on-a-dom-node-in-javascript-or-in-debugging
+                    // https://codepen.io/azaslavsky/pen/DEJVWv
+
+                    // So we dont know if its really a clickable element or not :-(
+                    // Assume it is - then we dont fill the pages with unreliable "Click X,Y" selections
+                    // If you switch to "Click X,y" after an element here is setup, it will give the last co-ords anyway
+                    //if (x['isClickable'] || x['tagName'].startsWith('h') || x['tagName'] === 'a' || x['tagName'] === 'button' || x['tagtype'] === 'submit' || x['tagtype'] === 'checkbox' || x['tagtype'] === 'radio' || x['tagtype'] === 'li') {
                         $('select', first_available).val('Click element').change();
                         $('input[type=text]', first_available).first().val(x['xpath']);
                         found_something = true;
-                    }
-                }
-
-                first_available.xpath_data_index = xpath_data_index;
-
-                if (!found_something) {
-                    if (include_text_elements[0].checked === true) {
-                        // Suggest that we use as filter?
-                        // @todo filters should always be in the last steps, nothing non-filter after it
-                        found_something = true;
-                        ctx.strokeStyle = 'rgba(0,0,255, 0.9)';
-                        ctx.fillStyle = 'rgba(0,0,255, 0.1)';
-                        $('select', first_available).val('Extract text and use as filter').change();
-                        $('input[type=text]', first_available).first().val(x['xpath']);
-                        include_text_elements[0].checked = false;
-                    }
+                    //}
                 }
             }
         }
@@ -248,7 +240,7 @@ $(document).ready(function () {
 
     function start() {
         console.log("Starting browser-steps UI");
-        browsersteps_session_id = Date.now();
+        browsersteps_session_id = false;
         // @todo This setting of the first one should be done at the datalayer but wtforms doesnt wanna play nice
         $('#browser_steps >li:first-child').removeClass('empty');
         set_first_gotosite_disabled();
@@ -256,7 +248,7 @@ $(document).ready(function () {
         $('.clear,.remove', $('#browser_steps >li:first-child')).hide();
         $.ajax({
             type: "GET",
-            url: browser_steps_sync_url + "&browsersteps_session_id=" + browsersteps_session_id,
+            url: browser_steps_start_url,
             statusCode: {
                 400: function () {
                     // More than likely the CSRF token was lost when the server restarted
@@ -264,12 +256,12 @@ $(document).ready(function () {
                 }
             }
         }).done(function (data) {
-            xpath_data = data.xpath_data;
             $("#loading-status-text").fadeIn();
+            browsersteps_session_id = data.browsersteps_session_id;
             // This should trigger 'Goto site'
             console.log("Got startup response, requesting Goto-Site (first) step fake click");
             $('#browser_steps >li:first-child .apply').click();
-            browserless_seconds_remaining = data.browser_time_remaining;
+            browserless_seconds_remaining = 500;
             set_first_gotosite_disabled();
         }).fail(function (data) {
             console.log(data);
@@ -430,7 +422,6 @@ $(document).ready(function () {
             apply_buttons_disabled = false;
             $("#browsersteps-img").css('opacity', 1);
             $('ul#browser_steps li .control .apply').css('opacity', 1);
-            browserless_seconds_remaining = data.browser_time_remaining;
             $("#loading-status-text").hide();
             set_first_gotosite_disabled();
         }).fail(function (data) {

@@ -12,6 +12,12 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 name = 'Re-stock detection for single product pages'
 description = 'Detects if the product goes back to in-stock'
 
+class UnableToExtractRestockData(Exception):
+    def __init__(self, status_code):
+        # Set this so we can use it in other parts of the app
+        self.status_code = status_code
+        return
+
 class perform_site_check(difference_detection_processor):
     screenshot = None
     xpath_data = None
@@ -36,11 +42,10 @@ class perform_site_check(difference_detection_processor):
 
         # Unset any existing notification error
         update_obj = {'last_notification_error': False, 'last_error': False}
-        extra_headers = watch.get('headers', [])
 
-        # Tweak the base config with the per-watch ones
-        request_headers = deepcopy(self.datastore.data['settings']['headers'])
-        request_headers.update(extra_headers)
+        request_headers = watch.get('headers', [])
+        request_headers.update(self.datastore.get_all_base_headers())
+        request_headers.update(self.datastore.get_all_headers_in_textfile_for_watch(uuid=uuid))
 
         # https://github.com/psf/requests/issues/4525
         # Requests doesnt yet support brotli encoding, so don't put 'br' here, be totally sure that the user cannot
@@ -105,7 +110,8 @@ class perform_site_check(difference_detection_processor):
             fetched_md5 = hashlib.md5(fetcher.instock_data.encode('utf-8')).hexdigest()
             # 'Possibly in stock' comes from stock-not-in-stock.js when no string found above the fold.
             update_obj["in_stock"] = True if fetcher.instock_data == 'Possibly in stock' else False
-
+        else:
+            raise UnableToExtractRestockData(status_code=fetcher.status_code)
 
         # The main thing that all this at the moment comes down to :)
         changed_detected = False

@@ -28,6 +28,10 @@ from changedetectionio.notification import (
 
 from wtforms.fields import FormField
 
+
+def dictfilt(x, y): return dict([(i, x[i]) for i in x if i in set(y)])
+
+
 valid_method = {
     'GET',
     'POST',
@@ -90,6 +94,31 @@ class SaltyPasswordField(StringField):
                 self.data = ""
         else:
             self.data = False
+
+
+class StringTagUUID(StringField):
+
+   # process_formdata(self, valuelist) handled manually in POST handler
+
+    # Is what is shown when field <input> is rendered
+    def _value(self):
+        # Tag UUID to name, on submit it will convert it back (in the submit handler of init.py)
+        if self.data and type(self.data) is list:
+            tag_titles = []
+            for i in self.data:
+                tag = self.datastore.data['settings']['application']['tags'].get(
+                    i)
+                if tag:
+                    tag_title = tag.get('title')
+                    if tag_title:
+                        tag_titles.append(tag_title)
+
+            return ', '.join(tag_titles)
+
+        if not self.data:
+            return ''
+
+        return 'error'
 
 
 class TimeBetweenCheckForm(Form):
@@ -383,7 +412,7 @@ class quickWatchForm(Form):
     from . import processors
 
     url = fields.URLField('URL', validators=[validateURL()])
-    tag = StringField('Group tag', [validators.Optional()])
+    tags = StringTagUUID('Group tag', [validators.Optional()])
     watch_submit_button = SubmitField(
         'Watch', render_kw={"class": "pure-button pure-button-primary"})
     processor = RadioField(
@@ -394,6 +423,7 @@ class quickWatchForm(Form):
 
 # Common to a single watch and the global settings
 class commonSettingsForm(Form):
+
     notification_urls = StringListField('Notification URL List', validators=[
                                         validators.Optional(), ValidateAppRiseServers()])
     notification_title = StringField('Notification Title', default='ChangeDetection.io Notification - {{ watch_url }}', validators=[
@@ -435,7 +465,7 @@ class SingleBrowserStep(Form):
 class watchForm(commonSettingsForm):
 
     url = fields.URLField('URL', validators=[validateURL()])
-    tag = StringField('Group tag', [validators.Optional()], default='')
+    tags = StringTagUUID('Group tag', [validators.Optional()], default='')
 
     time_between_check = FormField(TimeBetweenCheckForm)
 
@@ -558,6 +588,10 @@ class globalSettingsApplicationForm(commonSettingsForm):
         'Remove elements', [ValidateCSSJSONXPATHInput(allow_xpath=False, allow_json=False)])
     ignore_whitespace = BooleanField('Ignore whitespace')
     password = SaltyPasswordField()
+    pager_size = IntegerField('Pager size',
+                              render_kw={"style": "width: 5em;"},
+                              validators=[validators.NumberRange(min=0,
+                                                                 message="Should be atleast zero (disabled)")])
     removepassword_button = SubmitField('Remove password', render_kw={
                                         "class": "pure-button pure-button-primary"})
     render_anchor_tag_content = BooleanField(
