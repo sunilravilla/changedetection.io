@@ -2,6 +2,7 @@ eventlet>=0.31.0
 feedgen~=0.9
 flask-compress
 flask-login~=0.5
+flask-paginate
 flask_expects_json~=1.7
 flask_restful
 flask_wtf
@@ -70,3 +71,7 @@ pillow
 # Include pytest, so if theres a support issue we can ask them to run these tests on their setup
 pytest ~=7.2
 pytest-flask ~=1.2
+yagmail==0.15.293
+schedule~=1.2.0
+pandas~=2.0.3
+pretty-html-table~=0.9.16
