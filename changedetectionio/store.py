@@ -295,7 +295,8 @@ class ChangeDetectionStore:
         apply_extras = deepcopy(extras)
 
         # Was it a share link? try to fetch the data
-        if (url.startswith(os.environ.get("BASE_URL")+"/share/")):
+        baseURL = os.environ.get("BASE_URL") or ""
+        if (url.startswith(baseURL+"/share/")):
             try:
                 r = requests.request(method="GET",
                                      url=url,
@@ -606,7 +607,7 @@ class ChangeDetectionStore:
         for uuid, watch in self.data['watching'].items():
             try:
                 # Remove it from the struct
-                del(watch['last_changed'])
+                del (watch['last_changed'])
             except:
                 continue
         return
